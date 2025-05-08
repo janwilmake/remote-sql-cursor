@@ -1,8 +1,14 @@
-export class DatabaseDO {
+//@ts-check
+/// <reference types="@cloudflare/workers-types" />
+
+import { DurableObject } from "cloudflare:workers";
+
+export class DatabaseDO extends DurableObject {
   private storage: DurableObjectStorage;
-  private env: any;
+  static env: any;
 
   constructor(state: DurableObjectState, env: any) {
+    super(state, env);
     this.storage = state.storage;
     this.env = env;
   }
@@ -11,12 +17,12 @@ export class DatabaseDO {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    if (path === "/exec" && request.method === "POST") {
+    if (path === "/query/raw" && request.method === "POST") {
       return await this.handleExecRequest(request);
     }
 
     // Handle other endpoints...
-    return new Response("Not found", { status: 404 });
+    return new Response(String(this.storage.sql.databaseSize), { status: 404 });
   }
 
   handleExecRequest = async (request: Request): Promise<Response> => {
@@ -104,7 +110,7 @@ export class DatabaseDO {
 type SqlStorageValue = ArrayBuffer | string | number | null;
 
 // Client-side implementation of SqlStorageCursor
-class RemoteSqlStorageCursor<T extends Record<string, SqlStorageValue>> {
+export class RemoteSqlStorageCursor<T extends Record<string, SqlStorageValue>> {
   private reader: ReadableStreamDefaultReader<Uint8Array> | null;
   private buffer: string = "";
   private cachedResults: T[] | null = null;
@@ -321,15 +327,9 @@ export function exec<T extends Record<string, SqlStorageValue>>(
 ): RemoteSqlStorageCursor<T> {
   // Start the fetch but don't await it
   const fetchPromise = stub.fetch(
-    new Request("http://internal/exec", {
+    new Request("http://internal/query/raw", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        query,
-        bindings,
-      }),
+      body: JSON.stringify({ query, bindings }),
     }),
   );
 
