@@ -65,6 +65,6 @@ Is this feasable?
 
 Got a read speed of 8.7mb/second. After trying batching I saw the speed didn't really improve significantly, so this seems pretty reasonable for a durable object.
 
-# Next steps
+# Interesting Next steps:
 
-Make this work in the browser too. It'd be cool to
+Make this work in the browser too, all we need is a js version of `database.ts` that uses the worker as backend rather than the DO, and we need to then proxy that request to the DO. That'd be pretty cool!
