@@ -41,11 +41,9 @@ I want to create the same interface `SqlStorageCursor` in any client by streamin
 Ultimately i should be able to call:
 
 ```ts
-const cursor = exec(stub, `SELECT COUNT(*) as count FROM items`);
-
-// and
-for await (const row of cursor) {
-  console.log(`Count: ${row.count}`);
+for await (const row of exec(stub, `SELECT * FROM items`)) {
+  // Streams, row by row!
+  console.log({ item });
 }
 ```
 
@@ -54,3 +52,7 @@ Is this feasable?
 # Answer; yes;
 
 Got a read speed of 8.7mb/second. After trying batching I saw the speed didn't really improve significantly, so this seems pretty reasonable for a durable object.
+
+# Next steps
+
+Make this work in the browser too. It'd be cool to
