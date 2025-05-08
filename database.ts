@@ -110,7 +110,11 @@ export class DatabaseDO extends DurableObject {
 type SqlStorageValue = ArrayBuffer | string | number | null;
 
 // Client-side implementation of SqlStorageCursor
-export class RemoteSqlStorageCursor<T extends Record<string, SqlStorageValue>> {
+export class RemoteSqlStorageCursor<
+  T extends {
+    [x: string]: SqlStorageValue;
+  },
+> {
   private reader: ReadableStreamDefaultReader<Uint8Array> | null;
   private buffer: string = "";
   private cachedResults: T[] | null = null;
@@ -287,12 +291,20 @@ export class RemoteSqlStorageCursor<T extends Record<string, SqlStorageValue>> {
     return result.value;
   }
 
-  async *raw<U extends SqlStorageValue[]>(): AsyncIterableIterator<U> {
+  async *rawIterate<U extends SqlStorageValue[]>(): AsyncIterableIterator<U> {
     let nextResult = await this.next();
     while (!nextResult.done) {
       yield Object.values(nextResult.value) as unknown as U;
       nextResult = await this.next();
     }
+  }
+
+  async raw<U extends SqlStorageValue[]>(): Promise<Iterable<U>> {
+    const results: U[] = [];
+    for await (const row of this.rawIterate<U>()) {
+      results.push(row);
+    }
+    return results;
   }
 
   get columnNames(): string[] {
