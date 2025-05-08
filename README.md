@@ -72,3 +72,5 @@ Got a read speed of 8.7mb/second. After trying batching I saw the speed didn't r
 2. Figure out if it can somehow be made faster.
 
 3. Determine if this is a better core to be used for [DORM](https://github.com/janwilmake/dorm), effectively modularizing it and creating a much nicer interface. Lmk what you think!
+
+Let's discuss at https://x.com/janwilmake/status/1920274164889354247
