@@ -39,9 +39,12 @@ export default {
       count++;
     }
 
-    return new Response(`Total items: ${count}`, {
-      headers: { "Content-Type": "text/plain" },
-    });
+    return new Response(
+      `Total items at DO with name '${name}': ${count}\n\nStreamed to you by 'remote-sql-cursor'.\n\nChange the path to use a different Durable Object.`,
+      {
+        headers: { "Content-Type": "text/plain" },
+      },
+    );
   },
 };
 
