@@ -1,3 +1,13 @@
+# remote-sql-cursor
+
+Use the SqlStorageCursor from your durable objects anywhere.
+
+See [minimal-example](minimal-example.ts) to see how you can use this.
+
+Live demo: https://remote-sql-cursor.wilmake.com
+
+# The problem
+
 The Durable object sqlite storage has a function exec. its interface is:
 
 ```ts
@@ -41,8 +51,10 @@ I want to create the same interface `SqlStorageCursor` in any client by streamin
 Ultimately i should be able to call:
 
 ```ts
+let count = 0;
 for await (const row of exec(stub, `SELECT * FROM items`)) {
   // Streams, row by row!
+  count++;
   console.log({ item });
 }
 ```
