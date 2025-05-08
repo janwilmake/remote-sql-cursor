@@ -1,9 +1,11 @@
-// Import the exec utility from your database.ts file
 import { DatabaseDO, exec } from "./database";
 
 export interface Env {
   DATABASE: DurableObjectNamespace;
 }
+
+// Register the Durable Object
+export { DatabaseDO };
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -28,25 +30,22 @@ export default {
       Date.now(),
     ).toArray();
 
-    // Stream and count all items
-    let count = 0;
-    for await (const row of exec<{
+    type Item = {
       id: number;
       name: string;
       created_at: number;
-    }>(stub, `SELECT * FROM items`)) {
+    };
+
+    // Stream and count all items
+    let count = 0;
+    for await (const row of exec<Item>(stub, `SELECT * FROM items`)) {
       console.log({ row });
       count++;
     }
 
     return new Response(
       `Total items at DO with name '${name}': ${count}\n\nStreamed to you by 'remote-sql-cursor'.\n\nChange the path to use a different Durable Object.`,
-      {
-        headers: { "Content-Type": "text/plain" },
-      },
+      { headers: { "Content-Type": "text/plain" } },
     );
   },
 };
-
-// Register the Durable Object
-export { DatabaseDO };
