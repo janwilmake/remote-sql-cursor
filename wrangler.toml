@@ -1,5 +1,5 @@
 name = "remote-sql-cursor"
-main = "large-dataset-example.ts"
+main = "example.ts"
 compatibility_date = "2024-04-15"
 dev.port = 3000
 

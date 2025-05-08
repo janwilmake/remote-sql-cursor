@@ -1,10 +1,8 @@
-type Env = any;
-
 export class DatabaseDO {
   private storage: DurableObjectStorage;
-  private env: Env;
+  private env: any;
 
-  constructor(state: DurableObjectState, env: Env) {
+  constructor(state: DurableObjectState, env: any) {
     this.storage = state.storage;
     this.env = env;
   }
@@ -306,6 +304,7 @@ class RemoteSqlStorageCursor<T extends Record<string, SqlStorageValue>> {
   // Make it iterable
   [Symbol.asyncIterator](): AsyncIterableIterator<T> {
     return {
+      //@ts-expect-error
       next: () => this.next(),
       [Symbol.asyncIterator]() {
         return this;

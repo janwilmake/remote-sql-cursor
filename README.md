@@ -50,3 +50,7 @@ for await (const row of cursor) {
 ```
 
 Is this feasable?
+
+# Answer; yes;
+
+Got a read speed of 8.7mb/second. After trying batching I saw the speed didn't really improve significantly, so this seems pretty reasonable for a durable object.
