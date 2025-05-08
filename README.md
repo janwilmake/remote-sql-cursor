@@ -70,3 +70,5 @@ Got a read speed of 8.7mb/second. After trying batching I saw the speed didn't r
 1. Make this work in the browser too, all we need is a js version of `database.ts` that uses the worker as backend rather than the DO, and we need to then proxy that request to the DO. I don't know if I have a use for it but it'd be pretty cool DO!
 
 2. Figure out if it can somehow be made faster.
+
+3. Determine if this is a better core to be used for [DORM](https://github.com/janwilmake/dorm), effectively modularizing it and creating a much nicer interface. Lmk what you think!
