@@ -1,0 +1,224 @@
+openfunctions: 1.0.0
+info:
+  title: remote-sql-cursor
+  version: 0.0.5
+  description: A library for executing SQL queries against a remote database through Cloudflare Durable Objects with streaming results
+runtime:
+  cloudflare-workers: ">=1.0.0"
+functions:
+  exec:
+    description: Execute a SQL query against a remote database
+    exported: true
+    async: false
+    params:
+      - name: stub
+        description: The Durable Object stub or compatible interface with fetch method
+        required: true
+        schema:
+          type: object
+          description: Durable Object stub or any object with a fetch method
+          properties:
+            fetch:
+              type: function
+              description: Method to send a fetch request to the Durable Object
+          required:
+            - fetch
+      - name: query
+        description: SQL query to execute
+        required: true
+        schema:
+          type: string
+      - name: bindings
+        description: Query parameter bindings
+        required: false
+        schema:
+          type: array
+          items:
+            oneOf:
+              - type: string
+              - type: number
+              - type: null
+              - type: object
+                description: ArrayBuffer
+    result:
+      description: A cursor for iterating through the query results
+      schema:
+        $ref: "#/components/schemas/RemoteSqlStorageCursor"
+    errors:
+      - code: FETCH_ERROR
+        message: Error in fetch
+      - code: SQL_EXECUTION_ERROR
+        message: SQL execution failed
+    examples:
+      - name: Basic Query
+        params:
+          - name: stub
+            value: durableObjectStub
+          - name: query
+            value: SELECT * FROM users WHERE age > ?
+          - name: bindings
+            value: [21]
+
+  RemoteSqlStorageCursor/constructor:
+    description: Client-side implementation of SqlStorageCursor for processing streaming results
+    exported: true
+    params:
+      - name: stream
+        description: The readable stream containing query results
+        required: true
+        schema:
+          type: object
+          description: ReadableStream of Uint8Array chunks
+    result:
+      description: A new RemoteSqlStorageCursor instance
+      schema:
+        $ref: "#/components/schemas/RemoteSqlStorageCursor"
+
+  RemoteSqlStorageCursor/next:
+    description: Get the next result from the cursor
+    async: true
+    returnedFrom:
+      - RemoteSqlStorageCursor/constructor
+    result:
+      description: The next row or done indicator
+      schema:
+        oneOf:
+          - type: object
+            properties:
+              done:
+                type: boolean
+                enum: [false]
+              value:
+                type: object
+                description: Row data as object with column names as keys
+          - type: object
+            properties:
+              done:
+                type: boolean
+                enum: [true]
+    errors:
+      - code: SQL_ERROR
+        message: Error in SQL cursor
+
+  RemoteSqlStorageCursor/toArray:
+    description: Convert cursor to array of all results
+    async: true
+    returnedFrom:
+      - RemoteSqlStorageCursor/constructor
+    result:
+      description: Array of all rows
+      schema:
+        type: array
+        items:
+          type: object
+          description: Row data as object with column names as keys
+
+  RemoteSqlStorageCursor/one:
+    description: Get only the first result
+    async: true
+    returnedFrom:
+      - RemoteSqlStorageCursor/constructor
+    result:
+      description: The first row
+      schema:
+        type: object
+        description: Row data as object with column names as keys
+    errors:
+      - code: NO_ROWS
+        message: No rows returned
+
+  RemoteSqlStorageCursor/rawIterate:
+    description: Iterate through raw values (array form of each row)
+    async: true
+    returnedFrom:
+      - RemoteSqlStorageCursor/constructor
+    result:
+      description: Async iterator of row values as arrays
+      schema:
+        type: object
+        description: AsyncIterableIterator of arrays of values
+
+  RemoteSqlStorageCursor/raw:
+    description: Get all results as arrays of values rather than objects
+    async: true
+    returnedFrom:
+      - RemoteSqlStorageCursor/constructor
+    result:
+      description: Array of arrays of values
+      schema:
+        type: array
+        items:
+          type: array
+          items:
+            oneOf:
+              - type: string
+              - type: number
+              - type: null
+              - type: object
+                description: ArrayBuffer
+
+  RemoteSqlStorageCursor/columnNames:
+    description: Get column names from the query
+    returnedFrom:
+      - RemoteSqlStorageCursor/constructor
+    result:
+      description: Array of column names
+      schema:
+        type: array
+        items:
+          type: string
+
+  RemoteSqlStorageCursor/rowsRead:
+    description: Get number of rows read
+    returnedFrom:
+      - RemoteSqlStorageCursor/constructor
+    result:
+      description: Number of rows read
+      schema:
+        type: integer
+        minimum: 0
+
+  RemoteSqlStorageCursor/rowsWritten:
+    description: Get number of rows written (for INSERT/UPDATE/DELETE queries)
+    returnedFrom:
+      - RemoteSqlStorageCursor/constructor
+    result:
+      description: Number of rows written
+      schema:
+        type: integer
+        minimum: 0
+
+components:
+  schemas:
+    SqlStorageValue:
+      description: Valid values for SQL storage
+      oneOf:
+        - type: string
+        - type: number
+        - type: null
+        - type: object
+          description: ArrayBuffer
+
+    SqlStorageRow:
+      type: object
+      description: A row from a SQL query result
+      additionalProperties:
+        $ref: "#/components/schemas/SqlStorageValue"
+
+    RemoteSqlStorageCursor:
+      type: object
+      description: Client-side cursor for iterating through SQL query results
+      properties:
+        columnNames:
+          type: array
+          items:
+            type: string
+          description: Names of columns in the result set
+        rowsRead:
+          type: integer
+          minimum: 0
+          description: Number of rows read
+        rowsWritten:
+          type: integer
+          minimum: 0
+          description: Number of rows written (for INSERT/UPDATE/DELETE queries)
