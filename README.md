@@ -2,9 +2,17 @@
 
 Use the SqlStorageCursor from your durable objects anywhere.
 
-See [minimal-example](minimal-example.ts) to see how you can use this.
+Usage:
 
-Live demo: https://remote-sql-cursor.wilmake.com
+- install with `npm i remote-sql-cursor`
+
+Examples:
+
+- `proxy.ts` and `index.html` use `remote-sql-cursor` from the browser!
+- `minimal-example.ts` shows usage directly from your worker
+- `high-throughput-example.ts` shows streaming ±180mb at 8.7mb/s
+
+Live Browser Streaming Demo: https://remote-sql-cursor.wilmake.com
 
 # The problem
 
@@ -65,12 +73,13 @@ Is this feasable?
 
 Got a read speed of 8.7mb/second. After trying batching I saw the speed didn't really improve significantly, so this seems pretty reasonable for a durable object.
 
-# Interesting Next steps:
+# CHANGELOG
 
-1. Make this work in the browser too, all we need is a js version of `database.ts` that uses the worker as backend rather than the DO, and we need to then proxy that request to the DO. I don't know if I have a use for it but it'd be pretty cool DO!
+- **May 8, 2025**: Initial implementation and post: https://x.com/janwilmake/status/1920274164889354247
+- **May 9, 2025**: Use this in DORM v1@next (https://github.com/janwilmake/dorm)
+- **May 10, 2025**: Made this work in the browser too, all we need is a js version of `database.ts` that uses the worker as backend rather than the DO, and we need to then proxy that request to the DO. I also fixed backpressure problems after finding issues while rendering from stream.
 
-2. Figure out if it can somehow be made faster.
+# TODO
 
-3. Determine if this is a better core to be used for [DORM](https://github.com/janwilmake/dorm), effectively modularizing it and creating a much nicer interface. Lmk what you think!
-
-Let's discuss at https://x.com/janwilmake/status/1920274164889354247
+- launch remote sql cursor 0.0.4
+- launch dorm with v0.0.4
