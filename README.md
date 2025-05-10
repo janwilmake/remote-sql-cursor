@@ -12,7 +12,9 @@ Examples:
 - `minimal-example.ts` shows usage directly from your worker
 - `high-throughput-example.ts` shows streaming ±180mb at 8.7mb/s
 
-Live Browser Streaming Demo: https://remote-sql-cursor.wilmake.com
+Live Browser Streaming Demo: https://remote-sql-cursor.wilmake.com (does [not currently work](https://github.com/GoogleChrome/workbox/issues/1732) in safari)
+
+Please [leave a comment and share](https://x.com/janwilmake/status/1921158321983082787)!
 
 # The problem
 
