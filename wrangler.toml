@@ -1,5 +1,5 @@
 name = "remote-sql-cursor"
-main = "minimal-example.ts"
+main = "proxy.ts"
 compatibility_date = "2024-04-15"
 dev.port = 3000
 assets.directory = "./"
