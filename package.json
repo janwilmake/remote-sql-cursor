@@ -1,8 +1,9 @@
 {
   "name": "remote-sql-cursor",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "files": [
-    "js.js"
+    "js.js",
+    "do.ts"
   ],
   "main": "js.js"
 }
