@@ -1,49 +1,73 @@
 //@ts-check
 /// <reference types="@cloudflare/workers-types" />
 
-type SqlStorageValue = ArrayBuffer | string | number | null;
+/**
+ * @typedef {ArrayBuffer | string | number | null} SqlStorageValue
+ */
 
-// Client-side implementation of SqlStorageCursor
-export class RemoteSqlStorageCursor<
-  T extends {
-    [x: string]: SqlStorageValue;
-  },
-> {
-  private reader: ReadableStreamDefaultReader<Uint8Array> | null;
-  private buffer: string = "";
-  private cachedResults: T[] | null = null;
-  private currentIndex: number = 0;
-  private _columnNames: string[] = [];
-  private _rowsRead: number = 0;
-  private _rowsWritten: number = 0;
-  private done: boolean = false;
-  private pendingChunk: Promise<
-    { done?: boolean; value: T } | { done: true; value?: never }
-  > | null = null;
-  private pendingNextChunk: boolean = false;
+/**
+ * @typedef {Record<string, SqlStorageValue>} SqlStorageRow
+ */
 
-  constructor(stream: ReadableStream<Uint8Array>) {
+/**
+ * Client-side implementation of SqlStorageCursor
+ * @template {SqlStorageRow} T
+ */
+export class RemoteSqlStorageCursor {
+  /**
+   * @param {ReadableStream<Uint8Array>} stream - The readable stream containing query results
+   */
+  constructor(stream) {
+    /** @private @type {ReadableStreamDefaultReader<Uint8Array> | null} */
     this.reader = stream.getReader();
+    /** @private @type {string} */
+    this.buffer = "";
+    /** @private @type {T[] | null} */
+    this.cachedResults = null;
+    /** @private @type {number} */
+    this.currentIndex = 0;
+    /** @private @type {string[]} */
+    this._columnNames = [];
+    /** @private @type {number} */
+    this._rowsRead = 0;
+    /** @private @type {number} */
+    this._rowsWritten = 0;
+    /** @private @type {boolean} */
+    this.done = false;
+    /** @private @type {Promise<{done?: boolean, value: T} | {done: true, value?: never}> | null} */
+    this.pendingChunk = null;
+    /** @private @type {boolean} */
+    this.pendingNextChunk = false;
+
     // Start reading the first chunk immediately
     this.prepareNextChunk();
   }
 
-  private prepareNextChunk(): void {
+  /**
+   * Prepares the next chunk for reading
+   * @private
+   * @returns {void}
+   */
+  prepareNextChunk() {
     if (this.done || this.pendingNextChunk) return;
 
     this.pendingNextChunk = true;
     this.pendingChunk = this.readNextChunk();
   }
 
-  private async readNextChunk(): Promise<
-    { done?: boolean; value: T } | { done: true; value?: never }
-  > {
+  /**
+   * Reads the next chunk from the stream
+   * @private
+   * @returns {Promise<{done?: boolean, value: T} | {done: true, value?: never}>}
+   */
+  async readNextChunk() {
     if (this.done) {
       return { done: true };
     }
 
     try {
-      const { done, value } = await this.reader!.read();
+      /** @type {ReadableStreamReadResult<Uint8Array>} */
+      const { done, value } = await this.reader.read();
 
       if (done) {
         this.done = true;
@@ -52,13 +76,16 @@ export class RemoteSqlStorageCursor<
         // Process any remaining data in buffer
         if (this.buffer.trim()) {
           try {
-            const data = JSON.parse(this.buffer) as any;
+            /** @type {any} */
+            const data = JSON.parse(this.buffer);
             if (data.row) {
               this._rowsRead++;
-              return { value: data.row as T };
+              return { value: /** @type {T} */ (data.row) };
             } else if (data.metadata) {
               // Handle metadata
               this.processMetadata(data.metadata);
+            } else if (data.error) {
+              throw new Error(data.error);
             }
           } catch (e) {
             console.error("Error parsing final buffer:", e);
@@ -73,7 +100,8 @@ export class RemoteSqlStorageCursor<
       this.buffer += text;
 
       // Process complete JSON objects
-      const results: { value: T; done?: false }[] = [];
+      /** @type {Array<{value: T, done?: false}>} */
+      const results = [];
 
       // Look for complete JSON objects separated by newlines
       const lines = this.buffer.split("\n");
@@ -83,12 +111,15 @@ export class RemoteSqlStorageCursor<
         if (!line.trim()) continue;
 
         try {
-          const data = JSON.parse(line) as any;
+          /** @type {any} */
+          const data = JSON.parse(line);
           if (data.row) {
             this._rowsRead++;
-            results.push({ value: data.row as T });
+            results.push({ value: /** @type {T} */ (data.row) });
           } else if (data.metadata) {
             this.processMetadata(data.metadata);
+          } else if (data.error) {
+            throw new Error(data.error);
           }
         } catch (e) {
           console.error("Error parsing JSON:", e, "Line:", line);
@@ -106,11 +137,18 @@ export class RemoteSqlStorageCursor<
     } catch (error) {
       console.error("Error reading from stream:", error);
       this.done = true;
-      return { done: true };
+      throw error;
     }
   }
 
-  private processMetadata(metadata: any): void {
+  /**
+   * Process metadata information from the stream
+   * @private
+   * @param {Object} metadata - Metadata object
+   * @param {string[]} [metadata.columnNames] - Column names
+   * @param {number} [metadata.rowsWritten] - Number of rows written
+   */
+  processMetadata(metadata) {
     if (metadata.columnNames) {
       this._columnNames = metadata.columnNames;
     }
@@ -119,22 +157,25 @@ export class RemoteSqlStorageCursor<
     }
   }
 
-  // This method is used for iterator protocol
-  next(): Promise<{ done?: false; value: T } | { done: true }> {
+  /**
+   * Get the next result from the cursor
+   * @returns {Promise<{done?: false, value: T} | {done: true, value?: never}>}
+   */
+  async next() {
     if (this.cachedResults) {
       if (this.currentIndex < this.cachedResults.length) {
-        return Promise.resolve({
+        return {
           value: this.cachedResults[this.currentIndex++],
-        });
+        };
       }
-      return Promise.resolve({ done: true });
+      return { done: true };
     }
 
     if (!this.pendingChunk) {
       this.prepareNextChunk();
     }
 
-    const result = this.pendingChunk!;
+    const result = this.pendingChunk;
     this.pendingChunk = null;
 
     // Prepare next chunk if this wasn't the end
@@ -151,12 +192,17 @@ export class RemoteSqlStorageCursor<
     return result;
   }
 
-  async toArray(): Promise<T[]> {
+  /**
+   * Convert cursor to array of all results
+   * @returns {Promise<T[]>}
+   */
+  async toArray() {
     if (this.cachedResults) {
       return this.cachedResults;
     }
 
-    const results: T[] = [];
+    /** @type {T[]} */
+    const results = [];
 
     // Use iterator to collect all rows
     let nextResult = await this.next();
@@ -169,7 +215,12 @@ export class RemoteSqlStorageCursor<
     return results;
   }
 
-  async one(): Promise<T> {
+  /**
+   * Get only the first result
+   * @returns {Promise<T>}
+   * @throws {Error} If no rows are returned
+   */
+  async one() {
     if (this.cachedResults) {
       if (this.cachedResults.length === 0) {
         throw new Error("No rows returned");
@@ -185,38 +236,63 @@ export class RemoteSqlStorageCursor<
     return result.value;
   }
 
-  async *rawIterate<U extends SqlStorageValue[]>(): AsyncIterableIterator<U> {
+  /**
+   * Iterate through raw values (array form of each row)
+   * @template {SqlStorageValue[]} U
+   * @returns {AsyncIterableIterator<U>}
+   */
+  async *rawIterate() {
     let nextResult = await this.next();
     while (!nextResult.done) {
-      yield Object.values(nextResult.value) as unknown as U;
+      yield /** @type {U} */ (Object.values(nextResult.value));
       nextResult = await this.next();
     }
   }
 
-  async raw<U extends SqlStorageValue[]>(): Promise<Iterable<U>> {
-    const results: U[] = [];
-    for await (const row of this.rawIterate<U>()) {
+  /**
+   * Get all results as arrays of values rather than objects
+   * @template {SqlStorageValue[]} U
+   * @returns {Promise<U[]>}
+   */
+  async raw() {
+    /** @type {U[]} */
+    const results = [];
+    for await (const row of this.rawIterate()) {
       results.push(row);
     }
     return results;
   }
 
-  get columnNames(): string[] {
+  /**
+   * Get column names from the query
+   * @returns {string[]}
+   */
+  get columnNames() {
     return this._columnNames;
   }
 
-  get rowsRead(): number {
+  /**
+   * Get number of rows read
+   * @returns {number}
+   */
+  get rowsRead() {
     return this._rowsRead;
   }
 
-  get rowsWritten(): number {
+  /**
+   * Get number of rows written (for INSERT/UPDATE/DELETE queries)
+   * @returns {number}
+   */
+  get rowsWritten() {
     return this._rowsWritten;
   }
 
-  // Make it iterable
-  [Symbol.asyncIterator](): AsyncIterableIterator<T> {
+  /**
+   * Make it iterable
+   * @returns {AsyncIterableIterator<T>}
+   */
+  [Symbol.asyncIterator]() {
     return {
-      //@ts-expect-error
       next: () => this.next(),
       [Symbol.asyncIterator]() {
         return this;
@@ -225,16 +301,20 @@ export class RemoteSqlStorageCursor<
   }
 }
 
-// Non-async wrapper function to return cursor immediately
-export function exec<T extends Record<string, SqlStorageValue>>(
-  stub: any,
-  query: string,
-  ...bindings: any[]
-): RemoteSqlStorageCursor<T> {
+/**
+ * Execute a SQL query against a remote database
+ * @template {SqlStorageRow} T
+ * @param {Object} stub - The Durable Object stub or compatible interface with fetch method
+ * @param {string} query - SQL query to execute
+ * @param {...SqlStorageValue} bindings - Query parameter bindings
+ * @returns {RemoteSqlStorageCursor<T>}
+ */
+export function exec(stub, query, ...bindings) {
   // Start the fetch but don't await it
   const fetchPromise = stub.fetch(
     new Request("http://internal/query/raw", {
       method: "POST",
+      duplex: "half",
       body: JSON.stringify({ query, bindings }),
     }),
   );
@@ -277,5 +357,5 @@ export function exec<T extends Record<string, SqlStorageValue>>(
   })();
 
   // Return cursor immediately with our controlled stream
-  return new RemoteSqlStorageCursor<T>(readable);
+  return new RemoteSqlStorageCursor(readable);
 }

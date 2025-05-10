@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL Database Client</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'win95': {
+                            'bg': '#c0c0c0',
+                            'blue': '#000080',
+                            'green': '#008080',
+                            'gray': '#808080',
+                            'lightgray': '#d3d3d3',
+                            'border': '#87888f',
+                            'highlight': '#000080',
+                        }
+                    },
+                    boxShadow: {
+                        'win95-outer': 'inset -1px -1px #0a0a0a, inset 1px 1px #dfdfdf, inset -2px -2px grey, inset 2px 2px white',
+                        'win95-inner': 'inset -1px -1px #ffffff, inset 1px 1px #0a0a0a, inset -2px -2px #dfdfdf, inset 2px 2px grey',
+                        'win95-btn': 'inset -1px -1px #0a0a0a, inset 1px 1px #ffffff, inset -2px -2px grey, inset 2px 2px #dfdfdf',
+                        'win95-btn-pressed': 'inset -1px -1px #ffffff, inset 1px 1px #0a0a0a, inset -2px -2px #dfdfdf, inset 2px 2px grey',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .win95-border {
+            box-shadow: inset -1px -1px #0a0a0a, inset 1px 1px #ffffff, inset -2px -2px grey, inset 2px 2px #dfdfdf;
+        }
+
+        .win95-border-inset {
+            box-shadow: inset -1px -1px #ffffff, inset 1px 1px #0a0a0a, inset -2px -2px #dfdfdf, inset 2px 2px grey;
+        }
+
+        .win95-btn {
+            box-shadow: inset -1px -1px #0a0a0a, inset 1px 1px #ffffff, inset -2px -2px grey, inset 2px 2px #dfdfdf;
+        }
+
+        .win95-btn:active {
+            box-shadow: inset -1px -1px #ffffff, inset 1px 1px #0a0a0a, inset -2px -2px #dfdfdf, inset 2px 2px grey;
+        }
+
+        .modal {
+            transition: opacity 0.15s ease-in-out;
+        }
+    </style>
+</head>
+
+<body class="bg-win95-bg min-h-screen p-4 font-mono text-black">
+    <!-- Title Bar -->
+    <div class="win95-border bg-win95-blue text-white p-1 flex justify-between items-center mb-2">
+        <div class="flex items-center">
+            <span class="font-bold">SQL Database Client</span>
+        </div>
+        <div class="flex">
+            <button class="px-2 mx-1 win95-btn bg-win95-bg text-black">_</button>
+            <button class="px-2 mx-1 win95-btn bg-win95-bg text-black">×</button>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="win95-border bg-win95-bg p-2 flex flex-col h-[calc(100vh-80px)]">
+        <!-- Query Controls - Compact at top -->
+        <div class="flex flex-col lg:flex-row gap-2 mb-2">
+            <div class="flex-grow">
+                <textarea id="sql-query"
+                    class="win95-border-inset w-full h-16 p-2 bg-white resize-none font-mono text-sm">SELECT * FROM sqlite_master LIMIT 10;</textarea>
+            </div>
+            <div class="flex flex-col lg:w-64 gap-2">
+                <div class="flex gap-1">
+                    <button id="execute"
+                        class="win95-btn px-2 py-1 bg-win95-bg text-black flex-grow text-sm">Execute</button>
+                    <button id="clear-results" class="win95-btn px-2 py-1 bg-win95-bg text-black text-sm">Clear</button>
+                    <button id="config-button" class="win95-btn px-2 py-1 bg-win95-bg text-black text-sm">⚙️</button>
+                </div>
+                <div class="flex gap-1">
+                    <button class="example win95-btn px-2 py-1 bg-win95-bg text-sm"
+                        data-query="SELECT name FROM sqlite_master WHERE type='table';">Tables</button>
+                    <button class="example win95-btn px-2 py-1 bg-win95-bg text-sm"
+                        data-query="PRAGMA table_info('your_table_name');">Schema</button>
+                    <button class="example win95-btn px-2 py-1 bg-win95-bg text-sm"
+                        data-query="SELECT COUNT(*) AS count FROM your_table_name;">Count</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Bar -->
+        <div id="stats" class="win95-border-inset flex items-center bg-win95-lightgray p-1 text-xs mb-2 hidden">
+            <span>Ready</span>
+            <div id="loader" class="ml-2 w-4 h-4 border-2 border-win95-gray border-t-win95-blue rounded-full hidden"
+                style="animation: spin 1s linear infinite;"></div>
+        </div>
+
+        <!-- Results Table - Major part of the view -->
+        <div class="win95-border-inset flex-grow overflow-auto bg-white p-1">
+            <div id="result" class="h-full overflow-auto">
+                <div id="output" class="p-2 text-sm">Results will appear here...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Configuration Modal (Hidden by default) -->
+    <div id="config-modal"
+        class="modal hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+        <div class="win95-border bg-win95-bg w-full max-w-md p-1">
+            <!-- Modal Title Bar -->
+            <div class="win95-border bg-win95-blue text-white p-1 flex justify-between items-center mb-2">
+                <span class="font-bold">Configuration</span>
+                <button id="close-config" class="px-2 win95-btn bg-win95-bg text-black">×</button>
+            </div>
+
+            <!-- Modal Content -->
+            <div class="p-4">
+                <div class="mb-4">
+                    <label for="endpoint" class="block mb-1 text-sm">API Endpoint:</label>
+                    <input type="text" id="endpoint" class="win95-border-inset w-full p-1 bg-white text-sm"
+                        placeholder="https://remote-sql-cursor.wilmake.com/" value="">
+                </div>
+
+                <div class="flex justify-end">
+                    <button id="save-config" class="win95-btn px-4 py-1 bg-win95-bg text-black">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // Import the database functionality
+        import { RemoteSqlStorageCursor, exec } from './database-js.js';
+
+        // DOM elements
+        const queryInput = document.getElementById('sql-query');
+        const executeBtn = document.getElementById('execute');
+        const clearBtn = document.getElementById('clear-results');
+        const outputDiv = document.getElementById('output');
+        const statsDiv = document.getElementById('stats');
+        const loader = document.getElementById('loader');
+        const endpointInput = document.getElementById('endpoint');
+        const configBtn = document.getElementById('config-button');
+        const configModal = document.getElementById('config-modal');
+        const closeConfigBtn = document.getElementById('close-config');
+        const saveConfigBtn = document.getElementById('save-config');
+
+        // Modal controls
+        configBtn.addEventListener('click', () => {
+            configModal.classList.remove('hidden');
+        });
+
+        closeConfigBtn.addEventListener('click', () => {
+            configModal.classList.add('hidden');
+        });
+
+        saveConfigBtn.addEventListener('click', () => {
+            configModal.classList.add('hidden');
+        });
+
+        // Example query buttons
+        document.querySelectorAll('.example').forEach(button => {
+            button.addEventListener('click', () => {
+                queryInput.value = button.dataset.query;
+            });
+        });
+
+        // Clear results
+        clearBtn.addEventListener('click', () => {
+            outputDiv.innerHTML = 'Results will appear here...';
+            statsDiv.classList.add('hidden');
+        });
+
+        // Update stats function
+        function updateStats(cursor, rowCount) {
+            statsDiv.classList.remove('hidden');
+            statsDiv.innerHTML = `Rows received: ${rowCount}, Rows read: ${cursor.rowsRead}, Rows written: ${cursor.rowsWritten}
+                <div id="loader" class="ml-2 w-4 h-4 border-2 border-win95-gray border-t-win95-blue rounded-full hidden"
+                    style="animation: spin 1s linear infinite;"></div>`;
+        }
+
+        // Execute query
+        executeBtn.addEventListener('click', async () => {
+            const query = queryInput.value.trim();
+            const endpoint = endpointInput.value.trim();
+
+            if (!query) {
+                alert('Please enter a SQL query');
+                return;
+            }
+
+            if (!endpoint) {
+                configModal.classList.remove('hidden');
+                return;
+            }
+
+            // Show loader and stats
+            statsDiv.classList.remove('hidden');
+            statsDiv.innerHTML = `Executing query...
+                <div id="loader" class="ml-2 inline-block w-4 h-4 border-2 border-win95-gray border-t-win95-blue rounded-full"
+                    style="animation: spin 1s linear infinite;"></div>`;
+
+            outputDiv.innerHTML = 'Executing query...';
+
+            try {
+                // Create a stub object that mimics the Durable Object stub
+                const stub = {
+                    fetch: async (request) => {
+                        const url = new URL(request.url);
+                        const actualUrl = new URL(endpoint);
+                        actualUrl.pathname = url.pathname;
+
+                        // Forward the request to your worker
+                        const response = await fetch(actualUrl, {
+                            method: request.method,
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            duplex: "half",
+                            body: request.body,
+                        });
+
+                        return response;
+                    }
+                };
+
+                // Execute the query using our imported function
+                const cursor = exec(stub, query);
+
+                // Initialize table structure once we know column names
+                let tableInitialized = false;
+                let tableHtml = '';
+                let rowCount = 0;
+
+                // Stream each row
+                for await (const row of cursor) {
+                    rowCount++;
+
+                    // If this is the first row, initialize the table with headers
+                    if (!tableInitialized) {
+                        const columns = cursor.columnNames;
+                        tableHtml = '<table class="w-full border-collapse text-sm"><thead><tr class="bg-win95-lightgray">';
+                        columns.forEach(col => {
+                            tableHtml += `<th class="border border-win95-border p-1 text-left">${col}</th>`;
+                        });
+                        tableHtml += '</tr></thead><tbody id="table-body">';
+
+                        // Start with just the headers
+                        outputDiv.innerHTML = tableHtml + '</tbody></table>';
+                        tableInitialized = true;
+                    }
+
+                    // Add this row to the table
+                    const columns = cursor.columnNames;
+                    const tableBody = document.getElementById('table-body');
+                    const tr = document.createElement('tr');
+                    tr.className = rowCount % 2 === 0 ? 'bg-white' : 'bg-win95-lightgray';
+
+                    columns.forEach(col => {
+                        const td = document.createElement('td');
+                        td.className = 'border border-win95-border p-1';
+                        const value = row[col];
+                        td.textContent = value === null ? 'NULL' : String(value);
+                        tr.appendChild(td);
+                    });
+
+                    tableBody.appendChild(tr);
+
+                    // Update stats for each row
+                    updateStats(cursor, rowCount);
+                }
+
+                // If no rows were returned
+                if (rowCount === 0) {
+                    if (cursor.rowsWritten > 0) {
+                        outputDiv.innerHTML = `<div class="p-2">Query executed successfully. No rows to display.</div>`;
+                        updateStats(cursor, 0);
+                    } else {
+                        outputDiv.innerHTML = '<div class="p-2">No results returned.</div>';
+                        statsDiv.innerHTML = 'Query complete. No results.';
+                    }
+                }
+
+            } catch (error) {
+                console.error('Error executing query:', error);
+                outputDiv.innerHTML = `<div class="p-2 text-red-600">Error: ${error.message}</div>`;
+                statsDiv.innerHTML = 'Error executing query.';
+            }
+        });
+
+        // Close modal when clicking outside of it
+        window.addEventListener('click', (e) => {
+            if (e.target === configModal) {
+                configModal.classList.add('hidden');
+            }
+        });
+
+        // Check for local storage values for endpoint
+        const savedEndpoint = localStorage.getItem('sql-endpoint');
+        if (savedEndpoint) {
+            endpointInput.value = savedEndpoint;
+        }
+
+        // Save endpoint to local storage when saving
+        saveConfigBtn.addEventListener('click', () => {
+            localStorage.setItem('sql-endpoint', endpointInput.value);
+        });
+    </script>
+</body>
+
+</html>
