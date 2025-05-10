@@ -2,7 +2,6 @@
 /// <reference types="@cloudflare/workers-types" />
 
 import { DatabaseDO } from "./do";
-import { exec } from "./database-js";
 
 /**
  * Worker script that routes requests to Durable Object instances based on pathname

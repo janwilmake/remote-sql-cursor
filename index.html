@@ -109,6 +109,19 @@
                 style="animation: spin 1s linear infinite;"></div>
         </div>
 
+        <!-- Pagination Controls -->
+        <div id="pagination-container" class="flex justify-between items-center mb-2 hidden">
+            <div class="flex items-center">
+                <span class="text-xs mr-2">Page:</span>
+                <button id="prev-page" class="win95-btn px-2 py-0.5 bg-win95-bg text-black text-xs">◀</button>
+                <span id="page-info" class="px-2 py-0.5 text-xs">1 / 1</span>
+                <button id="next-page" class="win95-btn px-2 py-0.5 bg-win95-bg text-black text-xs">▶</button>
+            </div>
+            <div class="text-xs">
+                <span id="rows-per-page">Rows per page: 1000</span>
+            </div>
+        </div>
+
         <!-- Results Table - Major part of the view -->
         <div class="win95-border-inset flex-grow overflow-auto bg-white p-1">
             <div id="result" class="h-full overflow-auto">
@@ -142,9 +155,10 @@
         </div>
     </div>
 
+    <!-- Fixed implementation for index.html script section -->
     <script type="module">
         // Import the database functionality
-        import { RemoteSqlStorageCursor, exec } from './database-js.js';
+        import { RemoteSqlStorageCursor, exec } from './js.js';
 
         // DOM elements
         const queryInput = document.getElementById('sql-query');
@@ -152,12 +166,21 @@
         const clearBtn = document.getElementById('clear-results');
         const outputDiv = document.getElementById('output');
         const statsDiv = document.getElementById('stats');
-        const loader = document.getElementById('loader');
         const endpointInput = document.getElementById('endpoint');
         const configBtn = document.getElementById('config-button');
         const configModal = document.getElementById('config-modal');
         const closeConfigBtn = document.getElementById('close-config');
         const saveConfigBtn = document.getElementById('save-config');
+        const paginationContainer = document.getElementById('pagination-container');
+        const prevPageBtn = document.getElementById('prev-page');
+        const nextPageBtn = document.getElementById('next-page');
+        const pageInfo = document.getElementById('page-info');
+
+        // Pagination settings
+        const ROWS_PER_PAGE = 1000;
+        let currentPage = 1;
+        let totalPages = 1;
+        let allRows = [];
 
         // Modal controls
         configBtn.addEventListener('click', () => {
@@ -183,20 +206,109 @@
         clearBtn.addEventListener('click', () => {
             outputDiv.innerHTML = 'Results will appear here...';
             statsDiv.classList.add('hidden');
+            paginationContainer.classList.add('hidden');
+            allRows = [];
+            currentPage = 1;
+            totalPages = 1;
         });
 
-        // Update stats function
-        function updateStats(cursor, rowCount) {
+        // Function to check if execution is still active
+        let activeQueryId = null;
+
+        // Update pagination display
+        function updatePagination() {
+            totalPages = Math.max(1, Math.ceil(allRows.length / ROWS_PER_PAGE));
+            pageInfo.textContent = `${currentPage} / ${totalPages}`;
+
+            // Enable/disable pagination buttons
+            prevPageBtn.disabled = currentPage <= 1;
+            prevPageBtn.classList.toggle('opacity-50', currentPage <= 1);
+
+            nextPageBtn.disabled = currentPage >= totalPages;
+            nextPageBtn.classList.toggle('opacity-50', currentPage >= totalPages);
+        }
+
+        // Render current page
+        function renderCurrentPage() {
+            const tableBody = document.getElementById('table-body');
+            if (!tableBody) return;
+
+            // Clear current table body
+            tableBody.innerHTML = '';
+
+            // Calculate start and end indices for current page
+            const startIdx = (currentPage - 1) * ROWS_PER_PAGE;
+            const endIdx = Math.min(startIdx + ROWS_PER_PAGE, allRows.length);
+
+            // Add rows for current page
+            for (let i = startIdx; i < endIdx; i++) {
+                const row = allRows[i];
+
+                const tr = document.createElement('tr');
+                tr.className = (i - startIdx) % 2 === 0 ? 'bg-white' : 'bg-win95-lightgray';
+
+                Object.keys(row).forEach(col => {
+                    const td = document.createElement('td');
+                    td.className = 'border border-win95-border p-1';
+                    const value = row[col];
+                    td.textContent = value === null ? 'NULL' : String(value);
+                    tr.appendChild(td);
+                });
+
+                tableBody.appendChild(tr);
+            }
+        }
+
+        // Pagination event handlers
+        prevPageBtn.addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                renderCurrentPage();
+                updatePagination();
+            }
+        });
+
+        nextPageBtn.addEventListener('click', () => {
+            if (currentPage < totalPages) {
+                currentPage++;
+                renderCurrentPage();
+                updatePagination();
+            }
+        });
+
+        // Update stats function with query ID to avoid updates from previous queries
+        function updateStats(queryId, cursor, rowCount, isComplete = false) {
+            if (queryId !== activeQueryId) return; // Ignore updates from old queries
+
             statsDiv.classList.remove('hidden');
-            statsDiv.innerHTML = `Rows received: ${rowCount}, Rows read: ${cursor.rowsRead}, Rows written: ${cursor.rowsWritten}
-                <div id="loader" class="ml-2 w-4 h-4 border-2 border-win95-gray border-t-win95-blue rounded-full hidden"
+            let statusText = `Rows: ${rowCount}`;
+
+            if (cursor) {
+                statusText += `, Rows read: ${cursor.rowsRead}, Rows written: ${cursor.rowsWritten}`;
+            }
+
+            if (!isComplete) {
+                statusText += ' (loading...)';
+                statsDiv.innerHTML = `${statusText}
+                <div id="loader" class="ml-2 inline-block w-4 h-4 border-2 border-win95-gray border-t-win95-blue rounded-full"
                     style="animation: spin 1s linear infinite;"></div>`;
+            } else {
+                statsDiv.innerHTML = statusText;
+            }
         }
 
         // Execute query
         executeBtn.addEventListener('click', async () => {
             const query = queryInput.value.trim();
             const endpoint = endpointInput.value.trim();
+            const queryId = Date.now(); // Generate unique ID for this query execution
+            activeQueryId = queryId; // Mark this as the active query
+
+            // Reset pagination and rows
+            allRows = [];
+            currentPage = 1;
+            totalPages = 1;
+            paginationContainer.classList.add('hidden');
 
             if (!query) {
                 alert('Please enter a SQL query');
@@ -209,11 +321,7 @@
             }
 
             // Show loader and stats
-            statsDiv.classList.remove('hidden');
-            statsDiv.innerHTML = `Executing query...
-                <div id="loader" class="ml-2 inline-block w-4 h-4 border-2 border-win95-gray border-t-win95-blue rounded-full"
-                    style="animation: spin 1s linear infinite;"></div>`;
-
+            updateStats(queryId, null, 0);
             outputDiv.innerHTML = 'Executing query...';
 
             try {
@@ -241,64 +349,142 @@
                 // Execute the query using our imported function
                 const cursor = exec(stub, query);
 
-                // Initialize table structure once we know column names
-                let tableInitialized = false;
-                let tableHtml = '';
+                // Function to wait for initial metadata (column names)
+                const waitForMetadata = async (timeoutMs = 5000) => {
+                    const startTime = Date.now();
+                    while (cursor.columnNames.length === 0) {
+                        // Check for timeout
+                        if (Date.now() - startTime > timeoutMs) {
+                            throw new Error("Timeout waiting for column metadata");
+                        }
+                        // Short delay before checking again
+                        await new Promise(resolve => setTimeout(resolve, 50));
+                    }
+                };
+
+                // Wait for column metadata first
+                await waitForMetadata();
+
+                // Create the table structure
+                outputDiv.innerHTML = '<table class="w-full border-collapse text-sm" id="results-table"><thead id="table-head"></thead><tbody id="table-body"></tbody></table>';
+                const tableHead = document.getElementById('table-head');
+                const tableBody = document.getElementById('table-body');
+
+                // Create the table header once we have column names
+                const columns = cursor.columnNames;
+                let headerHtml = '<tr class="bg-win95-lightgray">';
+                columns.forEach(col => {
+                    headerHtml += `<th class="border border-win95-border p-1 text-left">${col}</th>`;
+                });
+                headerHtml += '</tr>';
+                tableHead.innerHTML = headerHtml;
+
+                // Now process rows in real time
                 let rowCount = 0;
+                let allRowsReceived = false;
 
-                // Stream each row
-                for await (const row of cursor) {
-                    rowCount++;
+                // Function to process rows as they arrive
+                const processRows = async () => {
+                    try {
+                        while (!allRowsReceived) {
+                            // Check if this is still the active query
+                            if (queryId !== activeQueryId) return;
 
-                    // If this is the first row, initialize the table with headers
-                    if (!tableInitialized) {
-                        const columns = cursor.columnNames;
-                        tableHtml = '<table class="w-full border-collapse text-sm"><thead><tr class="bg-win95-lightgray">';
-                        columns.forEach(col => {
-                            tableHtml += `<th class="border border-win95-border p-1 text-left">${col}</th>`;
-                        });
-                        tableHtml += '</tr></thead><tbody id="table-body">';
+                            const result = await cursor.next();
+                            if (result.done) {
+                                allRowsReceived = true;
+                                break;
+                            }
 
-                        // Start with just the headers
-                        outputDiv.innerHTML = tableHtml + '</tbody></table>';
-                        tableInitialized = true;
+                            const row = result.value;
+                            rowCount++;
+
+                            // Add to our all rows array for pagination
+                            allRows.push(row);
+
+                            // Only render to the DOM if we're on the first page
+                            if (currentPage === 1 && rowCount <= ROWS_PER_PAGE) {
+                                const tr = document.createElement('tr');
+                                tr.className = rowCount % 2 === 0 ? 'bg-white' : 'bg-win95-lightgray';
+
+                                columns.forEach(col => {
+                                    const td = document.createElement('td');
+                                    td.className = 'border border-win95-border p-1';
+                                    const value = row[col];
+                                    td.textContent = value === null ? 'NULL' : String(value);
+                                    tr.appendChild(td);
+                                });
+
+                                tableBody.appendChild(tr);
+                            }
+
+                            // Show pagination once we have more than one page of results
+                            if (rowCount > ROWS_PER_PAGE && paginationContainer.classList.contains('hidden')) {
+                                paginationContainer.classList.remove('hidden');
+                                updatePagination();
+                            }
+
+                            // Update stats periodically
+                            if (rowCount % 25 === 0 || rowCount === 1) {
+                                updateStats(queryId, cursor, rowCount);
+                                updatePagination();
+                            }
+                        }
+
+                        // Final stats update and pagination
+                        updateStats(queryId, cursor, rowCount, true);
+                        updatePagination();
+
+                        // If no rows were returned
+                        if (rowCount === 0) {
+                            if (cursor.rowsWritten > 0) {
+                                const tr = document.createElement('tr');
+                                const td = document.createElement('td');
+                                td.colSpan = columns.length || 1;
+                                td.className = 'border border-win95-border p-2 text-center';
+                                td.textContent = `Query executed successfully. ${cursor.rowsWritten} rows affected.`;
+                                tr.appendChild(td);
+                                tableBody.appendChild(tr);
+                            } else {
+                                const tr = document.createElement('tr');
+                                const td = document.createElement('td');
+                                td.colSpan = columns.length || 1;
+                                td.className = 'border border-win95-border p-2 text-center';
+                                td.textContent = 'No results returned.';
+                                tr.appendChild(td);
+                                tableBody.appendChild(tr);
+                            }
+                        } else {
+                            // Update pagination display
+                            if (allRows.length > ROWS_PER_PAGE) {
+                                paginationContainer.classList.remove('hidden');
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error processing rows:', error);
+                        // Only show error if this is still the active query
+                        if (queryId === activeQueryId) {
+                            const errorRow = document.createElement('tr');
+                            const errorCell = document.createElement('td');
+                            errorCell.colSpan = columns.length || 1;
+                            errorCell.className = 'border border-win95-border p-2 text-center text-red-600';
+                            errorCell.textContent = `Error processing rows: ${error.message}`;
+                            errorRow.appendChild(errorCell);
+                            tableBody.appendChild(errorRow);
+                        }
                     }
+                };
 
-                    // Add this row to the table
-                    const columns = cursor.columnNames;
-                    const tableBody = document.getElementById('table-body');
-                    const tr = document.createElement('tr');
-                    tr.className = rowCount % 2 === 0 ? 'bg-white' : 'bg-win95-lightgray';
-
-                    columns.forEach(col => {
-                        const td = document.createElement('td');
-                        td.className = 'border border-win95-border p-1';
-                        const value = row[col];
-                        td.textContent = value === null ? 'NULL' : String(value);
-                        tr.appendChild(td);
-                    });
-
-                    tableBody.appendChild(tr);
-
-                    // Update stats for each row
-                    updateStats(cursor, rowCount);
-                }
-
-                // If no rows were returned
-                if (rowCount === 0) {
-                    if (cursor.rowsWritten > 0) {
-                        outputDiv.innerHTML = `<div class="p-2">Query executed successfully. No rows to display.</div>`;
-                        updateStats(cursor, 0);
-                    } else {
-                        outputDiv.innerHTML = '<div class="p-2">No results returned.</div>';
-                        statsDiv.innerHTML = 'Query complete. No results.';
-                    }
-                }
+                // Start processing rows immediately
+                processRows();
 
             } catch (error) {
                 console.error('Error executing query:', error);
-                outputDiv.innerHTML = `<div class="p-2 text-red-600">Error: ${error.message}</div>`;
-                statsDiv.innerHTML = 'Error executing query.';
+                // Only update UI if this is still the active query
+                if (queryId === activeQueryId) {
+                    outputDiv.innerHTML = `<div class="p-2 text-red-600">Error: ${error.message}</div>`;
+                    statsDiv.innerHTML = 'Error executing query.';
+                }
             }
         });
 

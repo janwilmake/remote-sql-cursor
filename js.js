@@ -33,111 +33,116 @@ export class RemoteSqlStorageCursor {
     /** @private @type {number} */
     this._rowsWritten = 0;
     /** @private @type {boolean} */
-    this.done = false;
-    /** @private @type {Promise<{done?: boolean, value: T} | {done: true, value?: never}> | null} */
-    this.pendingChunk = null;
+    this.streamDone = false;
+    /** @private @type {Array<{done?: boolean, value: T} | {done: true, value?: never}>} */
+    this.pendingRows = [];
     /** @private @type {boolean} */
-    this.pendingNextChunk = false;
+    this.reading = false;
+    /** @private @type {boolean} */
+    this.error = false;
+    /** @private @type {string | null} */
+    this.errorMessage = null;
 
-    // Start reading the first chunk immediately
-    this.prepareNextChunk();
+    // Start reading from the stream immediately in the background
+    this.startReading();
   }
 
   /**
-   * Prepares the next chunk for reading
+   * Start reading from the stream in the background
    * @private
-   * @returns {void}
    */
-  prepareNextChunk() {
-    if (this.done || this.pendingNextChunk) return;
+  startReading() {
+    if (this.reading || this.streamDone) return;
 
-    this.pendingNextChunk = true;
-    this.pendingChunk = this.readNextChunk();
+    this.reading = true;
+    this.readFromStream().catch((err) => {
+      console.error("Error reading from stream:", err);
+      this.error = true;
+      this.errorMessage = err.message;
+    });
   }
 
   /**
-   * Reads the next chunk from the stream
+   * Continuously read from the stream and process data
    * @private
-   * @returns {Promise<{done?: boolean, value: T} | {done: true, value?: never}>}
    */
-  async readNextChunk() {
-    if (this.done) {
-      return { done: true };
+  async readFromStream() {
+    try {
+      while (!this.streamDone && this.reader) {
+        const { done, value } = await this.reader.read();
+
+        if (done) {
+          this.streamDone = true;
+          this.reader = null;
+
+          // Process any remaining data in buffer
+          this.processBufferContents();
+          break;
+        }
+
+        // Decode and add to buffer
+        const text = new TextDecoder().decode(value);
+        this.buffer += text;
+
+        // Process complete JSON objects
+        this.processBufferContents();
+      }
+    } finally {
+      this.reading = false;
+    }
+  }
+
+  /**
+   * Process complete JSON objects from the buffer
+   * @private
+   */
+  processBufferContents() {
+    // Look for complete JSON objects separated by newlines
+    const lines = this.buffer.split("\n");
+
+    // Keep the last potentially incomplete line in the buffer
+    this.buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+
+      try {
+        /** @type {any} */
+        const data = JSON.parse(line);
+
+        if (data.row) {
+          this._rowsRead++;
+          this.pendingRows.push({ value: /** @type {T} */ (data.row) });
+        } else if (data.metadata) {
+          this.processMetadata(data.metadata);
+        } else if (data.error) {
+          this.error = true;
+          this.errorMessage = data.error;
+          console.error("Error from server:", data.error);
+        }
+      } catch (e) {
+        console.error("Error parsing JSON:", e, "Line:", line);
+      }
     }
 
-    try {
-      /** @type {ReadableStreamReadResult<Uint8Array>} */
-      const { done, value } = await this.reader.read();
-
-      if (done) {
-        this.done = true;
-        this.reader = null;
-
-        // Process any remaining data in buffer
-        if (this.buffer.trim()) {
-          try {
-            /** @type {any} */
-            const data = JSON.parse(this.buffer);
-            if (data.row) {
-              this._rowsRead++;
-              return { value: /** @type {T} */ (data.row) };
-            } else if (data.metadata) {
-              // Handle metadata
-              this.processMetadata(data.metadata);
-            } else if (data.error) {
-              throw new Error(data.error);
-            }
-          } catch (e) {
-            console.error("Error parsing final buffer:", e);
-          }
+    // If stream is done and we have remaining buffer content, try to parse it
+    if (this.streamDone && this.buffer.trim()) {
+      try {
+        /** @type {any} */
+        const data = JSON.parse(this.buffer);
+        if (data.row) {
+          this._rowsRead++;
+          this.pendingRows.push({ value: /** @type {T} */ (data.row) });
+        } else if (data.metadata) {
+          this.processMetadata(data.metadata);
+        } else if (data.error) {
+          this.error = true;
+          this.errorMessage = data.error;
         }
-
-        return { done: true };
+      } catch (e) {
+        // Ignore partially received JSON at the end
       }
-
-      // Decode and add to buffer
-      const text = new TextDecoder().decode(value);
-      this.buffer += text;
-
-      // Process complete JSON objects
-      /** @type {Array<{value: T, done?: false}>} */
-      const results = [];
-
-      // Look for complete JSON objects separated by newlines
-      const lines = this.buffer.split("\n");
-      this.buffer = lines.pop() || ""; // Keep the last potentially incomplete line
-
-      for (const line of lines) {
-        if (!line.trim()) continue;
-
-        try {
-          /** @type {any} */
-          const data = JSON.parse(line);
-          if (data.row) {
-            this._rowsRead++;
-            results.push({ value: /** @type {T} */ (data.row) });
-          } else if (data.metadata) {
-            this.processMetadata(data.metadata);
-          } else if (data.error) {
-            throw new Error(data.error);
-          }
-        } catch (e) {
-          console.error("Error parsing JSON:", e, "Line:", line);
-        }
-      }
-
-      if (results.length > 0) {
-        // Reset the pending flag as we're about to return
-        this.pendingNextChunk = false;
-        return results[0]; // Return the first result
-      } else {
-        // No complete objects yet, read more
-        return await this.readNextChunk();
-      }
-    } catch (error) {
-      console.error("Error reading from stream:", error);
-      this.done = true;
-      throw error;
+      this.buffer = "";
     }
   }
 
@@ -158,10 +163,20 @@ export class RemoteSqlStorageCursor {
   }
 
   /**
+   * Check if reading is done and there are no more pending rows
+   * @private
+   * @returns {boolean}
+   */
+  isComplete() {
+    return this.streamDone && this.pendingRows.length === 0;
+  }
+
+  /**
    * Get the next result from the cursor
    * @returns {Promise<{done?: false, value: T} | {done: true, value?: never}>}
    */
   async next() {
+    // If we have cached results, return from there
     if (this.cachedResults) {
       if (this.currentIndex < this.cachedResults.length) {
         return {
@@ -171,25 +186,62 @@ export class RemoteSqlStorageCursor {
       return { done: true };
     }
 
-    if (!this.pendingChunk) {
-      this.prepareNextChunk();
+    // If there's an error, throw it
+    if (this.error) {
+      throw new Error(this.errorMessage || "Unknown error in SQL cursor");
     }
 
-    const result = this.pendingChunk;
-    this.pendingChunk = null;
+    // If we have pending rows, return the next one
+    if (this.pendingRows.length > 0) {
+      return this.pendingRows.shift();
+    }
 
-    // Prepare next chunk if this wasn't the end
-    result
-      .then((r) => {
-        if (!r.done) {
-          this.prepareNextChunk();
+    // If the stream is done and we have no more rows, we're done
+    if (this.isComplete()) {
+      return { done: true };
+    }
+
+    // Otherwise, wait for more data
+    return await this.waitForMoreData();
+  }
+
+  /**
+   * Wait for more data to be available
+   * @private
+   * @returns {Promise<{done?: false, value: T} | {done: true, value?: never}>}
+   */
+  async waitForMoreData() {
+    // Ensure reading is happening
+    if (!this.reading && !this.streamDone) {
+      this.startReading();
+    }
+
+    // Wait for new data or completion
+    return new Promise((resolve, reject) => {
+      const checkData = () => {
+        // If there's an error, reject
+        if (this.error) {
+          return reject(
+            new Error(this.errorMessage || "Unknown error in SQL cursor"),
+          );
         }
-      })
-      .catch((err) => {
-        console.error("Error preparing next chunk:", err);
-      });
 
-    return result;
+        // If we have rows now, resolve with the next one
+        if (this.pendingRows.length > 0) {
+          return resolve(this.pendingRows.shift());
+        }
+
+        // If stream is done and no more data, we're done
+        if (this.isComplete()) {
+          return resolve({ done: true });
+        }
+
+        // Otherwise, check again soon
+        setTimeout(checkData, 10);
+      };
+
+      checkData();
+    });
   }
 
   /**

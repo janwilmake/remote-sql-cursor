@@ -1,11 +1,8 @@
-import { DatabaseDO, exec } from "./database";
-
+import { exec } from "./js";
+export { DatabaseDO } from "./do";
 export interface Env {
   DATABASE: DurableObjectNamespace;
 }
-
-// Register the Durable Object
-export { DatabaseDO };
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {

@@ -1,5 +1,6 @@
 // large-dataset-example.ts
-import { DatabaseDO, exec } from "./database"; // Import the database implementation
+import { exec } from "./js"; // Import the database implementation
+export { DatabaseDO } from "./do";
 
 export interface Env {
   DATABASE: DurableObjectNamespace;
@@ -431,6 +432,3 @@ export default {
     }
   },
 };
-
-// Register the Durable Object
-export { DatabaseDO };

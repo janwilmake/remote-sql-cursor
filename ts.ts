@@ -1,3 +1,5 @@
+// old ts cursor with problems in backpressure
+//
 //@ts-check
 /// <reference types="@cloudflare/workers-types" />
 
