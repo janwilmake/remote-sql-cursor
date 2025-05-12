@@ -57,6 +57,17 @@ function generateUserData(id: number): { name: string; data: string } {
   };
 }
 
+const migrations = {
+  0: [
+    `CREATE TABLE IF NOT EXISTS large_users (
+              id INTEGER PRIMARY KEY,
+              name TEXT NOT NULL,
+              data TEXT NOT NULL,
+              created_at INTEGER NOT NULL
+            )`,
+  ],
+};
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     try {
@@ -67,44 +78,6 @@ export default {
       const id = env.DATABASE.idFromName("large-dataset-demo");
       const stub = env.DATABASE.get(id);
 
-      // Initialize the database
-      if (path === "/init") {
-        // Create a large data table
-        await stub.fetch(
-          new Request("http://internal/exec", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              query: `CREATE TABLE IF NOT EXISTS large_users (
-              id INTEGER PRIMARY KEY,
-              name TEXT NOT NULL,
-              data TEXT NOT NULL,
-              created_at INTEGER NOT NULL
-            )`,
-            }),
-          }),
-        );
-
-        return new Response(
-          JSON.stringify(
-            {
-              message: "Database initialized successfully",
-              endpoints: {
-                insert: "/insert?count=100", // Default 100 records
-                read: "/read",
-                count: "/count",
-                clear: "/clear",
-              },
-            },
-            null,
-            2,
-          ),
-          {
-            headers: { "Content-Type": "application/json" },
-          },
-        );
-      }
-
       // Insert large records
       if (path === "/insert") {
         const params = new URLSearchParams(url.search);
@@ -114,6 +87,7 @@ export default {
         // Get current count to determine starting ID
         const countCursor = exec<{ count: number }>(
           stub,
+          migrations,
           `SELECT COUNT(*) as count FROM large_users`,
         );
         const countResult = await countCursor.one();
@@ -244,7 +218,7 @@ export default {
               ? `SELECT id, name, created_at, data FROM large_users ORDER BY id LIMIT ${limit}`
               : `SELECT id, name, created_at, data FROM large_users ORDER BY id`;
 
-            const cursor = exec<LargeUser>(stub, query);
+            const cursor = exec<LargeUser>(stub, migrations, query);
             let count = 0;
             let totalDataSize = 0;
 
@@ -360,6 +334,7 @@ export default {
       if (path === "/count") {
         const countCursor = exec<{ count: number }>(
           stub,
+          migrations,
           `SELECT COUNT(*) as count FROM large_users`,
         );
         const result = await countCursor.one();

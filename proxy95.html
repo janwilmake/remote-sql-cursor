@@ -347,7 +347,7 @@
                 };
 
                 // Execute the query using our imported function
-                const cursor = exec(stub, query);
+                const cursor = exec(stub, {}, query);
 
                 // Function to wait for initial metadata (column names)
                 const waitForMetadata = async (timeoutMs = 5000) => {

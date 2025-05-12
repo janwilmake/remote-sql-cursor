@@ -1,0 +1,316 @@
+{
+  "openfunctions": "1.0.0",
+  "info": {
+    "title": "remote-sql-cursor",
+    "version": "0.0.5",
+    "description": "Client-side implementation for remote SQL database cursors in Cloudflare Workers",
+    "license": "MIT"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "cloudflare": ">=1.0.0"
+  },
+  "environment": {
+    "WORKER_ENV": {
+      "required": false,
+      "description": "Environment for Cloudflare Worker",
+      "enum": ["development", "production"]
+    },
+    "DATABASE_BINDING": {
+      "required": false,
+      "description": "Durable Object namespace binding for database operations",
+      "sensitive": false
+    }
+  },
+  "functions": {
+    "exec": {
+      "type": "function",
+      "async": true,
+      "description": "Execute a SQL query against a remote database and return a cursor for streaming results",
+      "params": [
+        {
+          "name": "stub",
+          "description": "The Durable Object stub or compatible interface with fetch method",
+          "required": true,
+          "schema": {
+            "type": "object",
+            "properties": {
+              "fetch": {
+                "type": "function",
+                "description": "Fetch method compatible with standard fetch API"
+              }
+            },
+            "required": ["fetch"]
+          }
+        },
+        {
+          "name": "query",
+          "description": "SQL query to execute",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "bindings",
+          "description": "Query parameter bindings (spread parameter)",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                { "type": "string" },
+                { "type": "number" },
+                { "type": "null" },
+                { "type": "object", "description": "ArrayBuffer" }
+              ]
+            }
+          }
+        }
+      ],
+      "result": {
+        "description": "A cursor that can be used to iterate over query results",
+        "schema": {
+          "$ref": "#/components/schemas/RemoteSqlStorageCursor"
+        }
+      },
+      "examples": [
+        {
+          "name": "Simple query execution",
+          "params": [
+            {
+              "name": "stub",
+              "value": "durableObjectStub"
+            },
+            {
+              "name": "query",
+              "value": "SELECT * FROM users WHERE age > ?"
+            },
+            {
+              "name": "bindings",
+              "value": [18]
+            }
+          ],
+          "result": "RemoteSqlStorageCursor instance"
+        }
+      ]
+    },
+    "RemoteSqlStorageCursor": {
+      "type": "function",
+      "description": "Client-side implementation of SqlStorageCursor that streams results from a remote SQL database",
+      "params": [
+        {
+          "name": "stream",
+          "description": "The readable stream containing query results",
+          "required": true,
+          "schema": {
+            "type": "object",
+            "description": "ReadableStream<Uint8Array>"
+          }
+        }
+      ],
+      "result": {
+        "description": "A new RemoteSqlStorageCursor instance",
+        "schema": {
+          "$ref": "#/components/schemas/RemoteSqlStorageCursor"
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "SqlStorageValue": {
+        "description": "Value that can be stored in SQL storage",
+        "oneOf": [
+          { "type": "string" },
+          { "type": "number" },
+          { "type": "null" },
+          { "type": "object", "description": "ArrayBuffer" }
+        ]
+      },
+      "SqlStorageRow": {
+        "type": "object",
+        "description": "A row in SQL storage",
+        "additionalProperties": {
+          "$ref": "#/components/schemas/SqlStorageValue"
+        }
+      },
+      "RemoteSqlStorageCursor": {
+        "type": "object",
+        "description": "Cursor for iterating through SQL query results",
+        "properties": {
+          "next": {
+            "type": "function",
+            "description": "Get the next result from the cursor",
+            "async": true,
+            "result": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "done": {
+                    "type": "boolean",
+                    "description": "Whether the cursor has reached the end"
+                  },
+                  "value": {
+                    "$ref": "#/components/schemas/SqlStorageRow",
+                    "description": "The current row value"
+                  }
+                }
+              }
+            },
+            "errors": [
+              {
+                "code": "CURSOR_ERROR",
+                "message": "Error in SQL cursor"
+              }
+            ]
+          },
+          "toArray": {
+            "type": "function",
+            "description": "Convert cursor to array of all results",
+            "async": true,
+            "result": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SqlStorageRow"
+                }
+              }
+            },
+            "errors": [
+              {
+                "code": "CURSOR_ERROR",
+                "message": "Error fetching all results"
+              }
+            ]
+          },
+          "one": {
+            "type": "function",
+            "description": "Get only the first result",
+            "async": true,
+            "result": {
+              "schema": {
+                "$ref": "#/components/schemas/SqlStorageRow"
+              }
+            },
+            "errors": [
+              {
+                "code": "NO_ROWS",
+                "message": "No rows returned"
+              },
+              {
+                "code": "CURSOR_ERROR",
+                "message": "Error fetching result"
+              }
+            ]
+          },
+          "raw": {
+            "type": "function",
+            "description": "Get all results as arrays of values rather than objects",
+            "async": true,
+            "result": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SqlStorageValue"
+                  }
+                }
+              }
+            },
+            "errors": [
+              {
+                "code": "CURSOR_ERROR",
+                "message": "Error fetching raw results"
+              }
+            ]
+          },
+          "rawIterate": {
+            "type": "function",
+            "description": "Iterate through raw values (array form of each row)",
+            "async": true,
+            "result": {
+              "schema": {
+                "type": "object",
+                "description": "AsyncIterableIterator of arrays of SqlStorageValues"
+              }
+            },
+            "errors": [
+              {
+                "code": "CURSOR_ERROR",
+                "message": "Error during iteration"
+              }
+            ]
+          },
+          "columnNames": {
+            "type": "array",
+            "description": "Get column names from the query",
+            "items": {
+              "type": "string"
+            },
+            "readonly": true
+          },
+          "rowsRead": {
+            "type": "number",
+            "description": "Get number of rows read",
+            "readonly": true
+          },
+          "rowsWritten": {
+            "type": "number",
+            "description": "Get number of rows written (for INSERT/UPDATE/DELETE queries)",
+            "readonly": true
+          }
+        }
+      },
+      "DatabaseDO": {
+        "type": "object",
+        "description": "Durable Object implementation for database operations",
+        "properties": {
+          "fetch": {
+            "type": "function",
+            "description": "Handle HTTP requests to the Durable Object",
+            "params": [
+              {
+                "name": "request",
+                "description": "The HTTP request",
+                "required": true,
+                "schema": {
+                  "type": "object",
+                  "description": "Request"
+                }
+              }
+            ],
+            "result": {
+              "schema": {
+                "type": "object",
+                "description": "Response"
+              }
+            }
+          },
+          "handleExecRequest": {
+            "type": "function",
+            "description": "Handle SQL execution requests",
+            "params": [
+              {
+                "name": "request",
+                "description": "The HTTP request containing query information",
+                "required": true,
+                "schema": {
+                  "type": "object",
+                  "description": "Request"
+                }
+              }
+            ],
+            "result": {
+              "schema": {
+                "type": "object",
+                "description": "Response with streaming results"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

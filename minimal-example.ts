@@ -4,6 +4,12 @@ export interface Env {
   DATABASE: DurableObjectNamespace;
 }
 
+const migrations = {
+  1: [
+    `CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY, name TEXT, created_at INTEGER)`,
+  ],
+};
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -13,15 +19,10 @@ export default {
     const id = env.DATABASE.idFromName(name);
     const stub = env.DATABASE.get(id);
 
-    // Create the items table if it doesn't exist
-    await exec(
-      stub,
-      `CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY, name TEXT, created_at INTEGER)`,
-    ).toArray();
-
     // Insert a new item each refresh with current timestamp
     await exec(
       stub,
+      migrations,
       `INSERT INTO items (name, created_at) VALUES (?, ?)`,
       `Item ${Date.now()}`,
       Date.now(),
@@ -35,7 +36,11 @@ export default {
 
     // Stream and count all items
     let count = 0;
-    for await (const row of exec<Item>(stub, `SELECT * FROM items`)) {
+    for await (const row of exec<Item>(
+      stub,
+      migrations,
+      `SELECT * FROM items`,
+    )) {
       console.log({ row });
       count++;
     }

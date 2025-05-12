@@ -357,17 +357,19 @@ export class RemoteSqlStorageCursor {
  * Execute a SQL query against a remote database
  * @template {SqlStorageRow} T
  * @param {Object} stub - The Durable Object stub or compatible interface with fetch method
+ * @param {{[version:number]:string[]}|undefined} migrations - Migrations to apply incase not applied
  * @param {string} query - SQL query to execute
  * @param {...SqlStorageValue} bindings - Query parameter bindings
  * @returns {RemoteSqlStorageCursor<T>}
  */
-export function exec(stub, query, ...bindings) {
+export function exec(stub, migrations, query, ...bindings) {
   // Start the fetch but don't await it
   const fetchPromise = stub.fetch(
     new Request("http://internal/query/raw", {
       method: "POST",
+      //@ts-ignore
       duplex: "half",
-      body: JSON.stringify({ query, bindings }),
+      body: JSON.stringify({ migrations, query, bindings }),
     }),
   );
 
