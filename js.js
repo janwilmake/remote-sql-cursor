@@ -193,7 +193,9 @@ export class RemoteSqlStorageCursor {
 
     // If we have pending rows, return the next one
     if (this.pendingRows.length > 0) {
-      return this.pendingRows.shift();
+      const first = this.pendingRows.shift();
+      //@ts-ignore
+      return first;
     }
 
     // If the stream is done and we have no more rows, we're done
@@ -228,7 +230,9 @@ export class RemoteSqlStorageCursor {
 
         // If we have rows now, resolve with the next one
         if (this.pendingRows.length > 0) {
-          return resolve(this.pendingRows.shift());
+          const first = this.pendingRows.shift();
+          //@ts-ignore
+          return resolve(first);
         }
 
         // If stream is done and no more data, we're done
@@ -310,6 +314,7 @@ export class RemoteSqlStorageCursor {
     /** @type {U[]} */
     const results = [];
     for await (const row of this.rawIterate()) {
+      //@ts-ignore
       results.push(row);
     }
     return results;
@@ -345,7 +350,9 @@ export class RemoteSqlStorageCursor {
    */
   [Symbol.asyncIterator]() {
     return {
-      next: () => this.next(),
+      next: () =>
+        // @ts-ignore
+        this.next(),
       [Symbol.asyncIterator]() {
         return this;
       },

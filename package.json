@@ -1,10 +1,14 @@
 {
   "name": "remote-sql-cursor",
-  "version": "0.0.7",
+  "version": "0.1.0",
   "files": [
     "js.js",
+    "js.d.ts",
     "do.ts"
   ],
-  "types": "types.d.ts",
-  "main": "do.ts"
+  "main": "js.js",
+  "types": "js.d.ts",
+  "scripts": {
+    "prepublishOnly": "tsc"
+  }
 }

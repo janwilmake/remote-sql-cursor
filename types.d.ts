@@ -83,19 +83,14 @@ declare module "remote-sql-cursor" {
 
   /**
    * Execute a SQL query against a remote database
-   *
-   * @param stub The Durable Object stub or compatible interface with fetch method
-   * @param query SQL query to execute
-   * @param bindings Query parameter bindings
-   * @returns A cursor for iterating through the query results
-   * @throws Error if fetch fails or SQL execution fails
-   *
-   * @example
+
+  * @example
    * // Basic Query
-   * const cursor = exec(durableObjectStub, "SELECT * FROM users WHERE age > ?", 21);
+   * const cursor = exec(durableObjectStub, undefined, "SELECT * FROM users WHERE age > ?", 21);
    */
   export function exec<T extends SqlStorageRow = SqlStorageRow>(
     stub: { fetch: (request: Request) => Promise<Response> },
+    migrations: { [version: number]: string[] } | undefined,
     query: string,
     ...bindings: SqlStorageValue[]
   ): RemoteSqlStorageCursor<T>;
