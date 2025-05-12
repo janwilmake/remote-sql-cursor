@@ -4,11 +4,12 @@ export class DatabaseDO extends DurableObject {
   private sql: SqlStorage;
   static env: any;
   private currentVersion: number = 0;
-
+  private id: string | undefined;
   constructor(state: DurableObjectState, env: any) {
     super(state, env);
     this.sql = state.storage.sql;
     this.env = env;
+    this.id = state.id.toString();
 
     // Initialize migrations table and load current version
     this.initializeMigrations();
@@ -55,7 +56,10 @@ export class DatabaseDO extends DurableObject {
     }
 
     // Handle other endpoints...
-    return new Response(null, { status: 404 });
+    return new Response(
+      `Connected with DatabaseDO id=${this.id} - use 'exec' or raw POST /query/raw to stream statements.`,
+      { status: 404 },
+    );
   }
 
   /**
@@ -241,3 +245,10 @@ export class DatabaseDO extends DurableObject {
     }
   };
 }
+
+export {
+  exec,
+  RemoteSqlStorageCursor,
+  SqlStorageRow,
+  SqlStorageValue,
+} from "./js";

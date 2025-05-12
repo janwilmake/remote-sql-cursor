@@ -6,5 +6,5 @@
     "do.ts"
   ],
   "types": "types.d.ts",
-  "main": "js.js"
+  "main": "do.ts"
 }

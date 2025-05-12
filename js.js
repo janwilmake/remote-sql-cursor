@@ -413,3 +413,35 @@ export function exec(stub, migrations, query, ...bindings) {
   // Return cursor immediately with our controlled stream
   return new RemoteSqlStorageCursor(readable);
 }
+
+/**
+ * Create a stub object that mimics the Durable Object stub
+ *
+ * @param {string} endpoint the origin of the proxy to your DO
+ */
+export const makeStub = (endpoint) => ({
+  /**
+   * @param {Request} request
+   * @returns {Promise<Response>}
+   */
+  fetch: async (request) => {
+    const url = new URL(request.url);
+    const actualUrl = new URL(endpoint);
+    // append request to endpoint pathname
+    actualUrl.pathname =
+      (actualUrl.pathname === "/" ? "" : actualUrl.pathname) + url.pathname;
+
+    // Forward the request to your worker
+    const response = await fetch(actualUrl, {
+      method: request.method,
+      headers: {
+        "Content-Type": "application/json",
+      },
+      //@ts-ignore
+      duplex: "half",
+      body: request.body,
+    });
+
+    return response;
+  },
+});

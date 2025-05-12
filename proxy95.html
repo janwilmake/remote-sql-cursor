@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+<!-- This demo does not work in safari nor does it work without https connection. -->
 
 <head>
     <meta charset="UTF-8">
@@ -158,7 +159,7 @@
     <!-- Fixed implementation for index.html script section -->
     <script type="module">
         // Import the database functionality
-        import { RemoteSqlStorageCursor, exec } from './js.js';
+        import { RemoteSqlStorageCursor, exec, makeStub } from './js.js';
 
         // DOM elements
         const queryInput = document.getElementById('sql-query');
@@ -325,29 +326,8 @@
             outputDiv.innerHTML = 'Executing query...';
 
             try {
-                // Create a stub object that mimics the Durable Object stub
-                const stub = {
-                    fetch: async (request) => {
-                        const url = new URL(request.url);
-                        const actualUrl = new URL(endpoint);
-                        actualUrl.pathname = url.pathname;
-
-                        // Forward the request to your worker
-                        const response = await fetch(actualUrl, {
-                            method: request.method,
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            duplex: "half",
-                            body: request.body,
-                        });
-
-                        return response;
-                    }
-                };
-
                 // Execute the query using our imported function
-                const cursor = exec(stub, {}, query);
+                const cursor = exec(makeStub(endpoint), {}, query);
 
                 // Function to wait for initial metadata (column names)
                 const waitForMetadata = async (timeoutMs = 5000) => {
