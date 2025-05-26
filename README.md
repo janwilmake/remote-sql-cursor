@@ -84,4 +84,4 @@ Got a read speed of 8.7mb/second. After trying batching I saw the speed didn't r
 
 # TODO
 
-💡 How transactions can be used: https://lmpify.com/httpsdevelopersc-vx7x1c0. Making a remote transaction possible would be very useful https://lmpify.com/httpsdevelopersc-3mptgo0. We MAY now be able to create a multi-DO transaction in DORM.
+💡 How transactions can be used: https://lmpify.com/httpsdevelopersc-vx7x1c0. Making a remote transaction possible would be very useful https://lmpify.com/httpsdevelopersc-3mptgo0. We MAY now be able to create a multi-DO transaction in DORM. See https://x.com/janwilmake/status/1926928095329587450 for potential feeback.
