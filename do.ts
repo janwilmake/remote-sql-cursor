@@ -1,3 +1,7 @@
+/// <reference types="@cloudflare/workers-types" />
+/// <reference lib="esnext" />
+//@ts-check
+
 import { DurableObject } from "cloudflare:workers";
 
 export class DatabaseDO extends DurableObject {
