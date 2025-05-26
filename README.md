@@ -85,3 +85,13 @@ Got a read speed of 8.7mb/second. After trying batching I saw the speed didn't r
 # TODO
 
 💡 How transactions can be used: https://lmpify.com/httpsdevelopersc-vx7x1c0. Making a remote transaction possible would be very useful https://lmpify.com/httpsdevelopersc-3mptgo0. We MAY now be able to create a multi-DO transaction in DORM. See https://x.com/janwilmake/status/1926928095329587450 for potential feeback.
+
+If this works out, breaking change to DORM:
+
+https://uuithub.com/janwilmake/dorm/tree/main?pathPatterns=mod.ts&pathPatterns=package.json
+
+Instead of name, mirrorName, locationHint, mirrorLocationHint, structure it like `names:string[]` and `locationHint?:{[name:string]:string}`
+
+Think about what that does to whatever's in `waitUntil` for different usecases. can we control it?
+
+Also, the question of sending multiple queries to the DO is not answered, making things slow and potentially not ACID. especially when working with many DBs, allowing point-in-time recovery and transactions would be huge.
