@@ -5,7 +5,7 @@
 import { DurableObject } from "cloudflare:workers";
 
 export class DatabaseDO extends DurableObject {
-  private sql: SqlStorage;
+  public sql: SqlStorage;
   static env: any;
   private currentVersion: number = 0;
   private id: string | undefined;

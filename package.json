@@ -1,6 +1,6 @@
 {
   "name": "remote-sql-cursor",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "files": [
     "js.js",
     "js.d.ts",
@@ -9,5 +9,9 @@
   "main": "do.ts",
   "scripts": {
     "prepublishOnly": "tsc"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250610.0",
+    "typescript": "^5.8.3"
   }
 }
