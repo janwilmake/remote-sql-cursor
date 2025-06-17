@@ -1,6 +1,6 @@
 // large-dataset-example.ts
-import { exec } from "./js"; // Import the database implementation
-export { DatabaseDO } from "./do";
+import { exec, makeStub } from "./js"; // Import the database implementation
+export { StreamableObject } from "./do";
 
 export interface Env {
   DATABASE: DurableObjectNamespace;
@@ -57,8 +57,9 @@ function generateUserData(id: number): { name: string; data: string } {
   };
 }
 
+// Migrations must use number keys, not string
 const migrations = {
-  0: [
+  1: [
     `CREATE TABLE IF NOT EXISTS large_users (
               id INTEGER PRIMARY KEY,
               name TEXT NOT NULL,
@@ -106,7 +107,7 @@ export default {
             let insertedTotal = 0;
             const timestamp = Date.now();
 
-            // Insert in batches
+            // Insert in batches using the streaming exec function
             for (
               let batchStart = 0;
               batchStart < count;
@@ -126,17 +127,16 @@ export default {
                 values.push(id, userData.name, userData.data, timestamp);
               }
 
-              // Execute batch insert
-              await stub.fetch(
-                new Request("http://internal/exec", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    query: `INSERT INTO large_users (id, name, data, created_at) VALUES ${placeholders}`,
-                    bindings: values,
-                  }),
-                }),
+              // Execute batch insert using the exec function
+              const insertCursor = exec(
+                stub,
+                undefined, // No migrations needed for this insert
+                `INSERT INTO large_users (id, name, data, created_at) VALUES ${placeholders}`,
+                ...values,
               );
+
+              // Wait for the insert to complete
+              await insertCursor.toArray();
 
               insertedTotal += currentBatchSize;
 
@@ -215,10 +215,16 @@ export default {
             };
 
             const query = limit
-              ? `SELECT id, name, created_at, data FROM large_users ORDER BY id LIMIT ${limit}`
+              ? `SELECT id, name, created_at, data FROM large_users ORDER BY id LIMIT ?`
               : `SELECT id, name, created_at, data FROM large_users ORDER BY id`;
 
-            const cursor = exec<LargeUser>(stub, migrations, query);
+            const bindings = limit ? [limit] : [];
+            const cursor = exec<LargeUser>(
+              stub,
+              migrations,
+              query,
+              ...bindings,
+            );
             let count = 0;
             let totalDataSize = 0;
 
@@ -325,7 +331,7 @@ export default {
         return new Response(readable, {
           headers: {
             "Content-Type": "application/json",
-            "Content-Encoding": "chunked",
+            "Transfer-Encoding": "chunked",
           },
         });
       }
@@ -356,15 +362,10 @@ export default {
 
       // Clear all data
       if (path === "/clear") {
-        await stub.fetch(
-          new Request("http://internal/exec", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              query: `DELETE FROM large_users`,
-            }),
-          }),
-        );
+        const clearCursor = exec(stub, migrations, `DELETE FROM large_users`);
+
+        // Wait for the delete to complete
+        await clearCursor.toArray();
 
         return new Response(
           JSON.stringify(
@@ -386,7 +387,6 @@ export default {
       Large Dataset Demo API
       
       Available endpoints:
-      - /init         : Initialize the database
       - /insert?count=100000 : Insert records (default 100)
       - /read         : Read all records (streams response)
       - /read?limit=1000 : Read limited records

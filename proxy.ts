@@ -1,7 +1,7 @@
 //@ts-check
 /// <reference types="@cloudflare/workers-types" />
 
-import { DatabaseDO } from "./do";
+import { StreamableObject } from "./do";
 
 /**
  * Worker script that routes requests to Durable Object instances based on pathname
@@ -71,4 +71,4 @@ export default {
 };
 
 // Export the Durable Object class
-export { DatabaseDO };
+export { StreamableObject };

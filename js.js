@@ -372,7 +372,8 @@ export class RemoteSqlStorageCursor {
 export function exec(stub, migrations, query, ...bindings) {
   // Start the fetch but don't await it
   const fetchPromise = stub.fetch(
-    new Request("http://internal/query/raw", {
+    new Request("http://internal/query/stream", {
+      // Updated endpoint
       method: "POST",
       //@ts-ignore
       duplex: "half",

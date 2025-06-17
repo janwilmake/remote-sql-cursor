@@ -4,25 +4,47 @@
 
 import { DurableObject } from "cloudflare:workers";
 
-export class DatabaseDO extends DurableObject {
-  public sql: SqlStorage;
-  static env: any;
+// Validator function type
+export type QueryValidator = (sql: string) => {
+  isValid: boolean;
+  error?: string;
+};
+
+export interface StreamableOptions {
+  validator?: QueryValidator;
+}
+
+export class StreamableHandler {
+  public sql: SqlStorage | undefined;
+  public env: any;
   private currentVersion: number = 0;
   private id: string | undefined;
-  constructor(state: DurableObjectState, env: any) {
-    super(state, env);
-    this.sql = state.storage.sql;
+  private supportedRoutes = ["/query/stream"];
+  private validator?: QueryValidator;
+
+  constructor(
+    sql: SqlStorage | undefined,
+    id?: string,
+    env?: any,
+    options?: StreamableOptions,
+  ) {
+    this.sql = sql;
     this.env = env;
-    this.id = state.id.toString();
+    this.id = id;
+    this.validator = options?.validator;
 
     // Initialize migrations table and load current version
-    this.initializeMigrations();
+    if (this.sql) {
+      this.initializeMigrations();
+    }
   }
 
   /**
    * Initialize the _migrations table and load the current version into memory
    */
   private initializeMigrations(): void {
+    if (!this.sql) return;
+
     try {
       // Create _migrations table if it doesn't exist
       this.sql.exec(`
@@ -55,15 +77,15 @@ export class DatabaseDO extends DurableObject {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    if (path === "/query/raw" && request.method === "POST") {
-      return await this.handleExecRequest(request);
+    // Check if this is a supported route that we should handle
+    if (this.supportedRoutes.includes(path)) {
+      if (path === "/query/stream" && request.method === "POST") {
+        return await this.handleStreamingQuery(request);
+      }
     }
 
-    // Handle other endpoints...
-    return new Response(
-      `Connected with DatabaseDO id=${this.id} - use 'exec' or raw POST /query/raw to stream statements.`,
-      { status: 404 },
-    );
+    // Return 404 for unsupported routes so parent class can handle them
+    return new Response("Not found", { status: 404 });
   }
 
   /**
@@ -72,6 +94,8 @@ export class DatabaseDO extends DurableObject {
   private async applyMigrations(migrations: {
     [version: number]: string[];
   }): Promise<any[]> {
+    if (!this.sql) return [];
+
     const results: any[] = [];
 
     // Sort version keys to ensure proper order
@@ -139,7 +163,17 @@ export class DatabaseDO extends DurableObject {
     return results;
   }
 
-  handleExecRequest = async (request: Request): Promise<Response> => {
+  handleStreamingQuery = async (request: Request): Promise<Response> => {
+    if (!this.sql) {
+      return new Response(
+        JSON.stringify({ error: "SQL storage not available" }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+
     try {
       // Parse the request body
       const {
@@ -152,6 +186,20 @@ export class DatabaseDO extends DurableObject {
         migrations?: { [version: string]: string[] };
       };
 
+      // Validate the query if validator is provided (migrations don't need validation)
+      if (this.validator && query) {
+        const validation = this.validator(query);
+        if (!validation.isValid) {
+          return new Response(
+            JSON.stringify({ error: `Invalid query: ${validation.error}` }),
+            {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            },
+          );
+        }
+      }
+
       // Create a TransformStream to stream the results
       const { readable, writable } = new TransformStream();
       const writer = writable.getWriter();
@@ -160,7 +208,7 @@ export class DatabaseDO extends DurableObject {
       // Execute operations and stream results asynchronously
       (async () => {
         try {
-          // Apply migrations if provided
+          // Apply migrations if provided (no validation needed for migrations)
           if (migrations) {
             const migrationResults = await this.applyMigrations(migrations);
 
@@ -189,7 +237,7 @@ export class DatabaseDO extends DurableObject {
           }
 
           // Execute the SQL query
-          const cursor = this.sql.exec(query, ...bindings);
+          const cursor = this.sql!.exec(query, ...bindings);
 
           // Send column names as metadata first
           await writer.write(
@@ -197,13 +245,14 @@ export class DatabaseDO extends DurableObject {
               JSON.stringify({
                 metadata: {
                   columnNames: cursor.columnNames,
-                  databaseSize: this.sql.databaseSize,
+                  databaseSize: this.sql!.databaseSize,
                 },
               }) + "\n",
             ),
           );
 
           // Stream each row as it comes
+          //@ts-ignore
           for (const row of cursor) {
             await writer.write(encoder.encode(JSON.stringify({ row }) + "\n"));
           }
@@ -250,9 +299,77 @@ export class DatabaseDO extends DurableObject {
   };
 }
 
-export {
-  exec,
-  RemoteSqlStorageCursor,
-  SqlStorageRow,
-  SqlStorageValue,
-} from "./js";
+export function Streamable(options?: StreamableOptions) {
+  return function <T extends { new (...args: any[]): any }>(constructor: T) {
+    return class extends constructor {
+      public _streamableHandler?: StreamableHandler;
+      private _streamableOptions: StreamableOptions;
+
+      constructor(...args: any[]) {
+        super(...args);
+        this._streamableOptions = options || {};
+      }
+
+      async fetch(request: Request): Promise<Response> {
+        // Initialize handler if not already done
+        if (!this._streamableHandler) {
+          this._streamableHandler = new StreamableHandler(
+            this.sql,
+            this.ctx?.id?.toString(),
+            this.env,
+            this._streamableOptions,
+          );
+        }
+
+        // Try streamable handler first
+        const streamableResponse = await this._streamableHandler.fetch(request);
+
+        // If streamable handler returns 404, try the parent class's fetch
+        if (streamableResponse.status === 404) {
+          return super.fetch(request);
+        }
+
+        return streamableResponse;
+      }
+    };
+  };
+}
+
+export class StreamableObject<TEnv = any> extends DurableObject<TEnv> {
+  public sql: SqlStorage | undefined;
+  protected _streamableHandler?: StreamableHandler;
+  protected readonly options?: StreamableOptions;
+
+  constructor(
+    state: DurableObjectState,
+    env: TEnv,
+    options?: StreamableOptions,
+  ) {
+    super(state, env);
+    this.sql = state.storage.sql;
+    this.options = options;
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    if (!this._streamableHandler) {
+      this._streamableHandler = new StreamableHandler(
+        this.sql,
+        this.ctx.id.toString(),
+        this.env,
+        this.options,
+      );
+    }
+
+    const streamableResponse = await this._streamableHandler.fetch(request);
+
+    // If streamable handler returns 404, provide a default response
+    if (streamableResponse.status === 404) {
+      return new Response(
+        `Connected with StreamableDurableObject id=${this.ctx.id.toString()} - use '/query/stream' for streaming queries.`,
+        { status: 404 },
+      );
+    }
+
+    return streamableResponse;
+  }
+}
