@@ -1,5 +1,5 @@
 import { exec } from "./js";
-export { DatabaseDO } from "./do";
+export { StreamableObject } from "./do";
 export interface Env {
   DATABASE: DurableObjectNamespace;
 }

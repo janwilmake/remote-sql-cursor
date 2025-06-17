@@ -8,7 +8,7 @@ Usage:
 
 Examples:
 
-- `proxy.ts` and `index.html` use `remote-sql-cursor` from the browser!
+- `proxy.ts` and `proxy95.html` use `remote-sql-cursor` from the browser!
 - `minimal-example.ts` shows usage directly from your worker
 - `high-throughput-example.ts` shows streaming ±180mb at 8.7mb/s
 
