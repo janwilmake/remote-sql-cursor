@@ -81,6 +81,7 @@ Got a read speed of 8.7mb/second. After trying batching I saw the speed didn't r
 - **May 9, 2025**: Use this in DORM v1@next (https://github.com/janwilmake/dorm)
 - **May 10, 2025**: Made this work in the browser too, all we need is a js version of `database.ts` that uses the worker as backend rather than the DO, and we need to then proxy that request to the DO. I also fixed backpressure problems after finding issues while rendering from stream.
 - **May 12, 2025**: 0.1.1 (BREAKING) - Added migrations support to easily do JIT migrations. This adds quite some complexity, so for some, 0.0.5 and below may suit needs better, but for my usecase this is exactly what I'd need, to ensure fast migrations everywhere, applying them only as soon as needed. Also added `makeStub` function for easy HTML-based usage, and improved types. Feedback: https://x.com/janwilmake/status/1921824728676770286
+- **June 17, 2025**: 0.1.3 - Added optional validator, added mixin decorator `@Streamable` (and refactored DO), renamed endpoint to `/query/stream` to not conflict with `@Browsable`
 
 # TODO
 
