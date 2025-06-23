@@ -3,6 +3,13 @@
 //@ts-check
 
 import { DurableObject } from "cloudflare:workers";
+export {
+  RemoteSqlStorageCursor,
+  exec,
+  makeStub,
+  SqlStorageRow,
+  SqlStorageValue,
+} from "./js";
 
 // Validator function type
 export type QueryValidator = (sql: string) => {
