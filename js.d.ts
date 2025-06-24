@@ -139,7 +139,7 @@ export class RemoteSqlStorageCursor<T extends SqlStorageRow> {
      */
     [Symbol.asyncIterator](): AsyncIterableIterator<T>;
 }
-export function makeStub(endpoint: string): {
+export function makeStub(basePath: string, baseHeaders?: any): {
     /**
      * @param {Request} request
      * @returns {Promise<Response>}
