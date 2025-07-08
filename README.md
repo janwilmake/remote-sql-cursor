@@ -69,7 +69,7 @@ for await (const row of exec(stub, `SELECT * FROM items`)) {
 }
 ```
 
-Is this feasable?
+Is this feasible?
 
 # Answer; yes;
 
