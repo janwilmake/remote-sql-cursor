@@ -54,7 +54,7 @@ declare abstract class SqlStorageCursor<
 }
 ```
 
-rpc does not allow accessing this since functions aren't serializable.
+RPC does not allow accessing this since functions aren't serializable.
 
 I want to create the same interface `SqlStorageCursor` in any client by streaming the response through fetch via a Streams API, then capture that into this SqlStorageCursor immediately without await.
 
@@ -74,6 +74,13 @@ Is this feasable?
 # Answer; yes;
 
 Got a read speed of 8.7mb/second. After trying batching I saw the speed didn't really improve significantly, so this seems pretty reasonable for a durable object.
+
+# Usecases
+
+Use this when you need to perform a single dynamic query to your DO from outside, and don't have any further logic around it. Use this when you care about the max query response size if you have a query which response size exceeds over the max RPC size. Theoretically there's no limit to the size of query responses since remote-sql-cursor can stream everything, row by row.
+
+> [!WARNING]
+> Avoid using this in your worker when doing multiple queries in a single request as this will slow down your app due to the roundtrips. If you need to perform several queries and don't care about the streaming behavior much, it's better to use [RPC](https://developers.cloudflare.com/durable-objects/best-practices/create-durable-object-stubs-and-send-requests/)
 
 # CHANGELOG
 
