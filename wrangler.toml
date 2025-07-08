@@ -1,7 +1,7 @@
-name = "remote-sql-cursor2"
+name = "remote-sql-cursor3"
 # switch between proxy.ts, minimal-example.ts and high-throughput-example.ts to test the other demos
-main = "high-throughput-example.ts"
-compatibility_date = "2024-04-15"
+main = "minimal-example.ts"
+compatibility_date = "2025-07-08"
 dev.port = 3000
 assets.directory = "./"
 
@@ -11,10 +11,10 @@ route.pattern = "remote-sql-cursor.wilmake.com"
 limits.cpu_ms = 300000
 
 [[durable_objects.bindings]]
-name = "DATABASE"
-class_name = "StreamableObject"
+name = "ExampleObject"
+class_name = "ExampleObject"
 
 [[migrations]]
 tag = "v1"
-new_sqlite_classes = [ "StreamableObject" ]
+new_sqlite_classes = [ "ExampleObject" ]
 

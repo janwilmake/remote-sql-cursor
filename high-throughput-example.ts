@@ -1,9 +1,21 @@
 // large-dataset-example.ts
 import { exec, makeStub } from "./js"; // Import the database implementation
-export { StreamableObject } from "./do";
+import { StreamableObject } from "./do";
+
+export class ExampleObject extends StreamableObject {
+  constructor(state: any, env: any) {
+    super(state, env);
+    state.storage.sql.exec(`CREATE TABLE IF NOT EXISTS large_users (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      data TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    )`);
+  }
+}
 
 export interface Env {
-  DATABASE: DurableObjectNamespace;
+  ExampleObject: DurableObjectNamespace;
 }
 
 // Helper to generate random data of specified size in KB
@@ -57,18 +69,6 @@ function generateUserData(id: number): { name: string; data: string } {
   };
 }
 
-// Migrations must use number keys, not string
-const migrations = {
-  1: [
-    `CREATE TABLE IF NOT EXISTS large_users (
-              id INTEGER PRIMARY KEY,
-              name TEXT NOT NULL,
-              data TEXT NOT NULL,
-              created_at INTEGER NOT NULL
-            )`,
-  ],
-};
-
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     try {
@@ -76,8 +76,8 @@ export default {
       const path = url.pathname;
 
       // Get the database stub
-      const id = env.DATABASE.idFromName("large-dataset-demo");
-      const stub = env.DATABASE.get(id);
+      const id = env.ExampleObject.idFromName("large-dataset-demo");
+      const stub = env.ExampleObject.get(id);
 
       // Insert large records
       if (path === "/insert") {
@@ -88,7 +88,6 @@ export default {
         // Get current count to determine starting ID
         const countCursor = exec<{ count: number }>(
           stub,
-          migrations,
           `SELECT COUNT(*) as count FROM large_users`,
         );
         const countResult = await countCursor.one();
@@ -219,12 +218,7 @@ export default {
               : `SELECT id, name, created_at, data FROM large_users ORDER BY id`;
 
             const bindings = limit ? [limit] : [];
-            const cursor = exec<LargeUser>(
-              stub,
-              migrations,
-              query,
-              ...bindings,
-            );
+            const cursor = exec<LargeUser>(stub, query, ...bindings);
             let count = 0;
             let totalDataSize = 0;
 
@@ -340,7 +334,6 @@ export default {
       if (path === "/count") {
         const countCursor = exec<{ count: number }>(
           stub,
-          migrations,
           `SELECT COUNT(*) as count FROM large_users`,
         );
         const result = await countCursor.one();
@@ -362,7 +355,7 @@ export default {
 
       // Clear all data
       if (path === "/clear") {
-        const clearCursor = exec(stub, migrations, `DELETE FROM large_users`);
+        const clearCursor = exec(stub, `DELETE FROM large_users`);
 
         // Wait for the delete to complete
         await clearCursor.toArray();

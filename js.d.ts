@@ -2,14 +2,11 @@
  * Execute a SQL query against a remote database
  * @template {SqlStorageRow} T
  * @param {Object} stub - The Durable Object stub or compatible interface with fetch method
- * @param {{[version:number]:string[]}|undefined} migrations - Migrations to apply incase not applied
  * @param {string} query - SQL query to execute
  * @param {...SqlStorageValue} bindings - Query parameter bindings
  * @returns {RemoteSqlStorageCursor<T>}
  */
-export function exec<T extends SqlStorageRow>(stub: any, migrations: {
-    [version: number]: string[];
-} | undefined, query: string, ...bindings: SqlStorageValue[]): RemoteSqlStorageCursor<T>;
+export function exec<T extends SqlStorageRow>(stub: any, query: string, ...bindings: SqlStorageValue[]): RemoteSqlStorageCursor<T>;
 /**
  * @typedef {ArrayBuffer | string | number | null} SqlStorageValue
  */

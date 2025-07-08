@@ -1,14 +1,18 @@
 import { exec } from "./js";
-export { StreamableObject } from "./do";
-export interface Env {
-  DATABASE: DurableObjectNamespace;
+import { StreamableObject } from "./do";
+
+export class ExampleObject extends StreamableObject {
+  constructor(state: DurableObjectState, env: any) {
+    super(state, env);
+    state.storage.sql.exec(
+      `CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY, name TEXT, created_at INTEGER)`,
+    );
+  }
 }
 
-const migrations = {
-  1: [
-    `CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY, name TEXT, created_at INTEGER)`,
-  ],
-};
+export interface Env {
+  ExampleObject: DurableObjectNamespace;
+}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -16,13 +20,12 @@ export default {
 
     // Create a DO name based on the pathname (or use a fixed name)
     const name = url.pathname.slice(1) || "default";
-    const id = env.DATABASE.idFromName(name);
-    const stub = env.DATABASE.get(id);
+    const id = env.ExampleObject.idFromName(name);
+    const stub = env.ExampleObject.get(id);
 
     // Insert a new item each refresh with current timestamp
     await exec(
       stub,
-      migrations,
       `INSERT INTO items (name, created_at) VALUES (?, ?)`,
       `Item ${Date.now()}`,
       Date.now(),
@@ -36,11 +39,7 @@ export default {
 
     // Stream and count all items
     let count = 0;
-    for await (const row of exec<Item>(
-      stub,
-      migrations,
-      `SELECT * FROM items`,
-    )) {
+    for await (const row of exec<Item>(stub, `SELECT * FROM items`)) {
       console.log({ row });
       count++;
     }
