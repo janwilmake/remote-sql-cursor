@@ -1,6 +1,6 @@
 name = "remote-sql-cursor3"
 # switch between proxy.ts, minimal-example.ts and high-throughput-example.ts to test the other demos
-main = "minimal-example.ts"
+main = "fix.ts"
 compatibility_date = "2025-07-08"
 dev.port = 3000
 assets.directory = "./"
@@ -17,4 +17,3 @@ class_name = "ExampleObject"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = [ "ExampleObject" ]
-
