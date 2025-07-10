@@ -81,10 +81,15 @@ export class ExampleObject extends StreamableObject {
       created_at INTEGER NOT NULL
     )`);
   }
+
+  direct() {
+    const array = this.sql?.exec("SELECT id,name FROM large_users").toArray();
+    return new Response(JSON.stringify({ length: array?.length, array }));
+  }
 }
 
 export interface Env {
-  ExampleObject: DurableObjectNamespace;
+  ExampleObject: DurableObjectNamespace<ExampleObject>;
   API_KEY?: string; // Optional API key for authentication
 }
 
@@ -153,6 +158,10 @@ export default {
       if (path === "/query/stream") {
         // Forward the request to the Durable Object
         return await stub.fetch(request);
+      }
+
+      if (path === "/direct") {
+        return stub.direct();
       }
 
       // Insert large records
