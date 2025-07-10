@@ -20,8 +20,7 @@ export default {
 
     // Create a DO name based on the pathname (or use a fixed name)
     const name = url.pathname.slice(1) || "default";
-    const id = env.ExampleObject.idFromName(name);
-    const stub = env.ExampleObject.get(id);
+    const stub = env.ExampleObject.get(env.ExampleObject.idFromName(name));
 
     // Insert a new item each refresh with current timestamp
     await exec(
@@ -38,7 +37,10 @@ export default {
     };
 
     // Stream and count all items
+    //@ts-ignore
+    const stub = env.ExampleObject.get(env.ExampleObject.idFromName(name));
     let count = 0;
+
     for await (const row of exec<Item>(stub, `SELECT * FROM items`)) {
       console.log({ row });
       count++;
