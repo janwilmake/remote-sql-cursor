@@ -19,34 +19,55 @@ export type QueryValidator = (sql: string) => {
 
 export interface StreamableOptions {
   validator?: QueryValidator;
+  authenticate?: (request: Request) => Promise<boolean> | boolean;
 }
 
 export class StreamableHandler {
   public sql: SqlStorage | undefined;
   public env: any;
-  private id: string | undefined;
   private supportedRoutes = ["/query/stream"];
   private validator?: QueryValidator;
+  private options: StreamableOptions;
 
   constructor(
     sql: SqlStorage | undefined,
-    id?: string,
     env?: any,
     options?: StreamableOptions,
   ) {
     this.sql = sql;
     this.env = env;
-    this.id = id;
+    this.options = options || {};
     this.validator = options?.validator;
+  }
+
+  private isRequestInternal(request: Request): boolean {
+    // Check for Cloudflare internal request headers
+    const cfRay = request.headers.get("cf-ray");
+    // In development, you might want to allow requests without these headers
+    const isDev = this.env?.ENVIRONMENT === "development";
+    // Internal stub calls won't have these headers
+    return (!request.cf && !cfRay) || isDev;
   }
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
 
+    if (!this.isRequestInternal(request) && !this.options.authenticate) {
+      throw new Error(
+        'External request detected without authentication set up. Please use authentication or pass "ENVIRONMENT=development" in your ".dev.vars".',
+      );
+    }
+
     // Check if this is a supported route that we should handle
     if (this.supportedRoutes.includes(path)) {
       if (path === "/query/stream" && request.method === "POST") {
+        if (!this.isRequestInternal(request) && this.options.authenticate) {
+          const isAuthed = await this.options.authenticate(request);
+          if (!isAuthed) {
+            return new Response("Unauthorized", { status: 401 });
+          }
+        }
         return await this.handleStreamingQuery(request);
       }
     }
@@ -87,71 +108,74 @@ export class StreamableHandler {
         }
       }
 
-      // Create a TransformStream to stream the results
-      const { readable, writable } = new TransformStream();
-      const writer = writable.getWriter();
-      const encoder = new TextEncoder();
+      if (!query || typeof query !== "string") {
+        return new Response(JSON.stringify({ error: "Query is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
 
-      // Execute operations and stream results asynchronously
-      (async () => {
-        try {
-          if (!query || typeof query !== "string") {
-            await writer.write(
+      // Create a ReadableStream to stream the results
+      const stream = new ReadableStream({
+        start: async (controller) => {
+          const encoder = new TextEncoder();
+
+          try {
+            // Execute the SQL query
+            const cursor = this.sql!.exec(query, ...bindings);
+
+            const metadataPart = {
+              metadata: {
+                columnNames: cursor.columnNames,
+                databaseSize: this.sql!.databaseSize,
+              },
+            };
+
+            // Send column names as metadata first
+            controller.enqueue(
+              encoder.encode(JSON.stringify(metadataPart) + "\n"),
+            );
+
+            // Stream each row as it comes
+            //@ts-ignore
+            for (const row of cursor) {
+              controller.enqueue(
+                encoder.encode(JSON.stringify({ row }) + "\n"),
+              );
+            }
+
+            // Send final metadata with stats
+            controller.enqueue(
               encoder.encode(
-                JSON.stringify({ error: "Query is required" }) + "\n",
+                JSON.stringify({
+                  metadata: {
+                    rowsRead: cursor.rowsRead,
+                    rowsWritten: cursor.rowsWritten,
+                  },
+                }) + "\n",
               ),
             );
-            return;
+
+            // Close the stream
+            controller.close();
+          } catch (error) {
+            console.error("SQL execution error:", error);
+            console.error("Query:", query);
+            console.error("Bindings:", bindings);
+
+            // Send error information
+            controller.enqueue(
+              encoder.encode(JSON.stringify({ error: error.message }) + "\n"),
+            );
+
+            // Close the stream with error
+            controller.close();
           }
+        },
+      });
 
-          // Execute the SQL query
-          const cursor = this.sql!.exec(query, ...bindings);
-
-          // Send column names as metadata first
-          await writer.write(
-            encoder.encode(
-              JSON.stringify({
-                metadata: {
-                  columnNames: cursor.columnNames,
-                  databaseSize: this.sql!.databaseSize,
-                },
-              }) + "\n",
-            ),
-          );
-
-          // Stream each row as it comes
-          //@ts-ignore
-          for (const row of cursor) {
-            await writer.write(encoder.encode(JSON.stringify({ row }) + "\n"));
-          }
-
-          // Send final metadata with stats
-          await writer.write(
-            encoder.encode(
-              JSON.stringify({
-                metadata: {
-                  rowsRead: cursor.rowsRead,
-                  rowsWritten: cursor.rowsWritten,
-                },
-              }) + "\n",
-            ),
-          );
-        } catch (error) {
-          console.error("SQL execution error:", error);
-          console.error("Query:", query);
-          console.error("Bindings:", bindings);
-          // Send error information
-          await writer.write(
-            encoder.encode(JSON.stringify({ error: error.message }) + "\n"),
-          );
-        } finally {
-          // Always close the writer when done
-          await writer.close();
-        }
-      })();
-
-      // Return the readable stream immediately
-      return new Response(readable, {
+      // Return the readable stream
+      return new Response(stream, {
         headers: {
           "Content-Type": "application/x-ndjson",
           "Transfer-Encoding": "chunked",
@@ -183,7 +207,6 @@ export function Streamable(options?: StreamableOptions) {
         if (!this._streamableHandler) {
           this._streamableHandler = new StreamableHandler(
             this.sql,
-            this.ctx?.id?.toString(),
             this.env,
             this._streamableOptions,
           );
@@ -215,6 +238,7 @@ export class StreamableObject<TEnv = any> extends DurableObject<TEnv> {
   ) {
     super(state, env);
     this.sql = state.storage.sql;
+    this.env = env;
     this.options = options;
   }
 
@@ -222,7 +246,6 @@ export class StreamableObject<TEnv = any> extends DurableObject<TEnv> {
     if (!this._streamableHandler) {
       this._streamableHandler = new StreamableHandler(
         this.sql,
-        this.ctx.id.toString(),
         this.env,
         this.options,
       );

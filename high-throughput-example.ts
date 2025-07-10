@@ -4,7 +4,76 @@ import { StreamableObject } from "./do";
 
 export class ExampleObject extends StreamableObject {
   constructor(state: any, env: any) {
-    super(state, env);
+    // Add authentication and validator options
+    const options = {
+      authenticate: async (request: Request) => {
+        // Simple API key authentication
+        const authHeader = request.headers.get("Authorization");
+        const apiKey = env.API_KEY || "demo-key-123";
+
+        if (!authHeader) {
+          return false;
+        }
+
+        // Support both "Bearer token" and "token" formats
+        const token = authHeader.startsWith("Bearer ")
+          ? authHeader.substring(7)
+          : authHeader;
+
+        return token === apiKey;
+      },
+      validator: (sql: string) => {
+        // Basic SQL validation - prevent destructive operations in demo
+        const normalizedSql = sql.toLowerCase().trim();
+
+        // Allow SELECT queries
+        if (normalizedSql.startsWith("select")) {
+          return { isValid: true };
+        }
+
+        // Allow INSERT, UPDATE, DELETE for demo purposes
+        if (
+          normalizedSql.startsWith("insert") ||
+          normalizedSql.startsWith("update") ||
+          normalizedSql.startsWith("delete")
+        ) {
+          return { isValid: true };
+        }
+
+        // Allow CREATE TABLE for demo
+        if (normalizedSql.startsWith("create table")) {
+          return { isValid: true };
+        }
+
+        // Block potentially dangerous operations
+        const dangerousPatterns = [
+          "drop table",
+          "drop database",
+          "truncate",
+          "alter table",
+          "create index",
+          "drop index",
+        ];
+
+        for (const pattern of dangerousPatterns) {
+          if (normalizedSql.includes(pattern)) {
+            return {
+              isValid: false,
+              error: `Operation '${pattern}' is not allowed in demo mode`,
+            };
+          }
+        }
+
+        return {
+          isValid: false,
+          error: "Query type not allowed in demo mode",
+        };
+      },
+    };
+
+    super(state, env, options);
+
+    // Initialize the demo table
     state.storage.sql.exec(`CREATE TABLE IF NOT EXISTS large_users (
       id INTEGER PRIMARY KEY,
       name TEXT NOT NULL,
@@ -16,6 +85,7 @@ export class ExampleObject extends StreamableObject {
 
 export interface Env {
   ExampleObject: DurableObjectNamespace;
+  API_KEY?: string; // Optional API key for authentication
 }
 
 // Helper to generate random data of specified size in KB
@@ -79,6 +149,12 @@ export default {
       const id = env.ExampleObject.idFromName("large-dataset-demo");
       const stub = env.ExampleObject.get(id);
 
+      // Handle the streaming query endpoint directly
+      if (path === "/query/stream") {
+        // Forward the request to the Durable Object
+        return await stub.fetch(request);
+      }
+
       // Insert large records
       if (path === "/insert") {
         const params = new URLSearchParams(url.search);
@@ -93,99 +169,97 @@ export default {
         const countResult = await countCursor.one();
         const startId = countResult.count;
 
-        // Use a stream to provide progress updates
-        const { readable, writable } = new TransformStream();
-        const writer = writable.getWriter();
-        const encoder = new TextEncoder();
+        // Use ReadableStream to provide progress updates
+        const stream = new ReadableStream({
+          start: async (controller) => {
+            const encoder = new TextEncoder();
 
-        // Process in the background
-        (async () => {
-          try {
-            await writer.write(encoder.encode('{\n  "progress": [\n'));
+            try {
+              controller.enqueue(encoder.encode('{\n  "progress": [\n'));
 
-            let insertedTotal = 0;
-            const timestamp = Date.now();
+              let insertedTotal = 0;
+              const timestamp = Date.now();
 
-            // Insert in batches using the streaming exec function
-            for (
-              let batchStart = 0;
-              batchStart < count;
-              batchStart += batchSize
-            ) {
-              const currentBatchSize = Math.min(batchSize, count - batchStart);
-              const placeholders = Array(currentBatchSize)
-                .fill("(?, ?, ?, ?)")
-                .join(", ");
-              const values: any[] = [];
+              // Insert in batches using the streaming exec function
+              for (
+                let batchStart = 0;
+                batchStart < count;
+                batchStart += batchSize
+              ) {
+                const currentBatchSize = Math.min(
+                  batchSize,
+                  count - batchStart,
+                );
+                const placeholders = Array(currentBatchSize)
+                  .fill("(?, ?, ?, ?)")
+                  .join(", ");
+                const values: any[] = [];
 
-              // Prepare batch values
-              for (let i = 0; i < currentBatchSize; i++) {
-                const id = startId + batchStart + i + 1;
-                const userData = generateUserData(id);
+                // Prepare batch values
+                for (let i = 0; i < currentBatchSize; i++) {
+                  const id = startId + batchStart + i + 1;
+                  const userData = generateUserData(id);
 
-                values.push(id, userData.name, userData.data, timestamp);
+                  values.push(id, userData.name, userData.data, timestamp);
+                }
+
+                // Execute batch insert using the exec function
+                const insertCursor = exec(
+                  stub,
+                  `INSERT INTO large_users (id, name, data, created_at) VALUES ${placeholders}`,
+                  ...values,
+                );
+
+                // Wait for the insert to complete
+                await insertCursor.toArray();
+
+                insertedTotal += currentBatchSize;
+
+                // Progress update
+                if (batchStart > 0) {
+                  controller.enqueue(encoder.encode(",\n"));
+                }
+                controller.enqueue(
+                  encoder.encode(
+                    `    {"inserted": ${insertedTotal}, "total": ${count}}`,
+                  ),
+                );
               }
 
-              // Execute batch insert using the exec function
-              const insertCursor = exec(
-                stub,
-                undefined, // No migrations needed for this insert
-                `INSERT INTO large_users (id, name, data, created_at) VALUES ${placeholders}`,
-                ...values,
-              );
-
-              // Wait for the insert to complete
-              await insertCursor.toArray();
-
-              insertedTotal += currentBatchSize;
-
-              // Progress update
-              if (batchStart > 0) {
-                await writer.write(encoder.encode(",\n"));
-              }
-              await writer.write(
+              // Complete the response
+              controller.enqueue(encoder.encode("\n  ],\n"));
+              controller.enqueue(
                 encoder.encode(
-                  `    {"inserted": ${insertedTotal}, "total": ${count}}`,
+                  `  "message": "Successfully inserted ${count} records of 4KB each",\n`,
                 ),
               );
-            }
+              controller.enqueue(
+                encoder.encode(
+                  `  "totalSize": "${(count * 4).toFixed(2)}KB (${(
+                    (count * 4) /
+                    1024
+                  ).toFixed(2)}MB)",\n`,
+                ),
+              );
+              controller.enqueue(
+                encoder.encode(
+                  `  "timestamp": "${new Date(timestamp).toISOString()}"\n`,
+                ),
+              );
+              controller.enqueue(encoder.encode("}\n"));
 
-            // Complete the response
-            await writer.write(encoder.encode("\n  ],\n"));
-            await writer.write(
-              encoder.encode(
-                `  "message": "Successfully inserted ${count} records of 4KB each",\n`,
-              ),
-            );
-            await writer.write(
-              encoder.encode(
-                `  "totalSize": "${(count * 4).toFixed(2)}KB (${(
-                  (count * 4) /
-                  1024
-                ).toFixed(2)}MB)",\n`,
-              ),
-            );
-            await writer.write(
-              encoder.encode(
-                `  "timestamp": "${new Date(timestamp).toISOString()}"\n`,
-              ),
-            );
-            await writer.write(encoder.encode("}\n"));
-          } catch (error) {
-            console.error("Error during insertion:", error);
-            try {
-              await writer.write(
+              controller.close();
+            } catch (error) {
+              console.error("Error during insertion:", error);
+              controller.enqueue(
                 encoder.encode(`\n  ],\n  "error": "${error.message}"\n}\n`),
               );
-            } catch (e) {
-              // Already closed or other error
+              controller.close();
             }
-          } finally {
-            await writer.close();
-          }
-        })();
+          },
+        });
 
-        return new Response(readable, {
+        return new Response(stream, {
           headers: { "Content-Type": "application/json" },
         });
       }
@@ -198,131 +272,128 @@ export default {
           : undefined;
         const compact = params.get("compact") === "true";
 
-        // Set up a streaming response
-        const { readable, writable } = new TransformStream();
-        const writer = writable.getWriter();
-        const encoder = new TextEncoder();
+        // Set up a streaming response with ReadableStream
+        const stream = new ReadableStream({
+          start: async (controller) => {
+            const encoder = new TextEncoder();
 
-        // Process in the background
-        (async () => {
-          try {
-            type LargeUser = {
-              id: number;
-              name: string;
-              created_at: number;
-              data: string;
-            };
+            try {
+              type LargeUser = {
+                id: number;
+                name: string;
+                created_at: number;
+                data: string;
+              };
 
-            const query = limit
-              ? `SELECT id, name, created_at, data FROM large_users ORDER BY id LIMIT ?`
-              : `SELECT id, name, created_at, data FROM large_users ORDER BY id`;
+              const query = limit
+                ? `SELECT id, name, created_at, data FROM large_users ORDER BY id LIMIT ?`
+                : `SELECT id, name, created_at, data FROM large_users ORDER BY id`;
 
-            const bindings = limit ? [limit] : [];
-            const cursor = exec<LargeUser>(stub, query, ...bindings);
-            let count = 0;
-            let totalDataSize = 0;
+              const bindings = limit ? [limit] : [];
+              const cursor = exec<LargeUser>(stub, query, ...bindings);
+              let count = 0;
+              let totalDataSize = 0;
 
-            // Start JSON output
-            await writer.write(encoder.encode("{\n"));
+              // Start JSON output
+              controller.enqueue(encoder.encode("{\n"));
 
-            if (!compact) {
-              await writer.write(encoder.encode('  "records": [\n'));
-            } else {
-              await writer.write(
-                encoder.encode(
-                  '  "records_summary": "Streaming records with compact mode enabled",\n',
-                ),
-              );
-            }
-
-            // Stream process each user
-            let first = true;
-            const startTime = Date.now();
-
-            for await (const user of cursor) {
-              count++;
-              totalDataSize += user.data.length;
-
-              // Only output full records in non-compact mode
               if (!compact) {
-                // Add comma between items
-                if (!first) {
-                  await writer.write(encoder.encode(",\n"));
-                } else {
-                  first = false;
-                }
-
-                // For performance, we output minimal data
-                const outputUser = {
-                  id: user.id,
-                  name: user.name,
-                  created_at: new Date(user.created_at).toISOString(),
-                  data_size: `${(user.data.length / 1024).toFixed(2)}KB`,
-                };
-
-                // Format the user as JSON
-                await writer.write(
-                  encoder.encode("    " + JSON.stringify(outputUser)),
-                );
-              } else if (count % 1000 === 0) {
-                // In compact mode, just report progress every 1000 records
-                const elapsedSec = (Date.now() - startTime) / 1000;
-                const rps = Math.round(count / elapsedSec);
-
-                await writer.write(
+                controller.enqueue(encoder.encode('  "records": [\n'));
+              } else {
+                controller.enqueue(
                   encoder.encode(
-                    `  "progress_update_${count}": "Processed ${count} records (${rps} records/sec)",\n`,
+                    '  "records_summary": "Streaming records with compact mode enabled",\n',
                   ),
                 );
               }
-            }
 
-            if (!compact) {
-              await writer.write(encoder.encode("\n  ],\n"));
-            }
+              // Stream process each user
+              let first = true;
+              const startTime = Date.now();
+              console.log({ first, startTime });
+              for await (const user of cursor) {
+                count++;
+                totalDataSize += user.data.length;
 
-            // Add summary information
-            const elapsedSec = (Date.now() - startTime) / 1000;
-            await writer.write(encoder.encode(`  "summary": {\n`));
-            await writer.write(
-              encoder.encode(`    "total_records": ${count},\n`),
-            );
-            await writer.write(
-              encoder.encode(
-                `    "total_data_size": "${(
-                  totalDataSize /
-                  (1024 * 1024)
-                ).toFixed(2)}MB",\n`,
-              ),
-            );
-            await writer.write(
-              encoder.encode(
-                `    "elapsed_seconds": ${elapsedSec.toFixed(2)},\n`,
-              ),
-            );
-            await writer.write(
-              encoder.encode(
-                `    "records_per_second": ${Math.round(count / elapsedSec)}\n`,
-              ),
-            );
-            await writer.write(encoder.encode(`  }\n`));
-            await writer.write(encoder.encode("}\n"));
-          } catch (error) {
-            console.error("Error processing stream:", error);
-            // Try to write an error if we haven't started writing yet
-            try {
-              await writer.write(
+                // Only output full records in non-compact mode
+                if (!compact) {
+                  // Add comma between items
+                  if (!first) {
+                    controller.enqueue(encoder.encode(",\n"));
+                  } else {
+                    first = false;
+                  }
+
+                  // For performance, we output minimal data
+                  const outputUser = {
+                    id: user.id,
+                    name: user.name,
+                    created_at: new Date(user.created_at).toISOString(),
+                    data_size: `${(user.data.length / 1024).toFixed(2)}KB`,
+                  };
+
+                  // Format the user as JSON
+                  controller.enqueue(
+                    encoder.encode("    " + JSON.stringify(outputUser)),
+                  );
+                } else if (count % 1000 === 0) {
+                  // In compact mode, just report progress every 1000 records
+                  const elapsedSec = (Date.now() - startTime) / 1000;
+                  const rps = Math.round(count / elapsedSec);
+
+                  controller.enqueue(
+                    encoder.encode(
+                      `  "progress_update_${count}": "Processed ${count} records (${rps} records/sec)",\n`,
+                    ),
+                  );
+                }
+              }
+
+              if (!compact) {
+                controller.enqueue(encoder.encode("\n  ],\n"));
+              }
+
+              // Add summary information
+              const elapsedSec = (Date.now() - startTime) / 1000;
+              controller.enqueue(encoder.encode(`  "summary": {\n`));
+              controller.enqueue(
+                encoder.encode(`    "total_records": ${count},\n`),
+              );
+              controller.enqueue(
+                encoder.encode(
+                  `    "total_data_size": "${(
+                    totalDataSize /
+                    (1024 * 1024)
+                  ).toFixed(2)}MB",\n`,
+                ),
+              );
+              controller.enqueue(
+                encoder.encode(
+                  `    "elapsed_seconds": ${elapsedSec.toFixed(2)},\n`,
+                ),
+              );
+              controller.enqueue(
+                encoder.encode(
+                  `    "records_per_second": ${Math.round(
+                    count / elapsedSec,
+                  )}\n`,
+                ),
+              );
+              controller.enqueue(encoder.encode(`  }\n`));
+              controller.enqueue(encoder.encode("}\n"));
+
+              controller.close();
+            } catch (error) {
+              console.error("Error processing stream:", error);
+              controller.enqueue(
                 encoder.encode(JSON.stringify({ error: error.message })),
               );
-            } catch (e) {
-              // Ignore, probably already writing
+              controller.close();
             }
-          } finally {
-            await writer.close();
-          }
-        })();
+          },
+        });
 
-        return new Response(readable, {
+        return new Response(stream, {
           headers: {
             "Content-Type": "application/json",
             "Transfer-Encoding": "chunked",
@@ -347,9 +418,7 @@ export default {
             null,
             2,
           ),
-          {
-            headers: { "Content-Type": "application/json" },
-          },
+          { headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -386,6 +455,18 @@ export default {
       - /read?compact=true : Compact output (better performance)
       - /count        : Count records
       - /clear        : Delete all records
+      - /query/stream : Stream SQL queries (requires Authorization header)
+      
+      SQL Streaming API:
+      POST /query/stream
+      Headers: Authorization: Bearer your-api-key (or just: your-api-key)
+      Body: { "query": "SELECT * FROM large_users LIMIT 10", "bindings": [] }
+      
+      Example curl:
+      curl -X POST https://your-worker.domain.com/query/stream \\
+        -H "Authorization: ${env.API_KEY || "demo-key-123"}" \\
+        -H "Content-Type: application/json" \\
+        -d '{"query": "SELECT id, name FROM large_users LIMIT 5"}'
       `,
         {
           headers: { "Content-Type": "text/plain" },

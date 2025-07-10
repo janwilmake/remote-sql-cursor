@@ -16,6 +16,25 @@ Live Browser Streaming Demo: https://remote-sql-cursor.wilmake.com (does [not cu
 
 Please [leave a comment and share](https://x.com/janwilmake/status/1921158321983082787)!
 
+# Benefits
+
+- Use a nearly identical `exec` cursor API outside of the DO boundary
+- TTFB for remote queries is much lower for large queries
+
+# Limitations
+
+- Although the data in the SQL table can be up to 10GB, the max result from the SQL query can not exceed the memory. If you try you will retrieve `{"error":"Durable Object's isolate exceeded its memory limit and was reset."}`. It seems that, although SQLite can be configured such that it uses less memory and streams results, this is normally not the case, and Cloudflare does not support it.
+
+# Try it
+
+```sh
+curl --no-buffer -X POST https://remote-sql-cursor.wilmake.com/query/stream \
+  -H "Authorization: demo-key-123" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "SELECT id, name FROM large_users"}' -s | \
+  awk '/^{"row":/ { count++; printf "\rCount: %d", count; fflush() } END { print "" }'
+```
+
 # The problem
 
 The Durable object sqlite storage has a function exec. its interface is:
@@ -75,9 +94,15 @@ Is this feasible?
 
 Got a read speed of 8.7mb/second. After trying batching I saw the speed didn't really improve significantly, so this seems pretty reasonable for a durable object.
 
+# Test
+
+```
+
+```
+
 # Usecases
 
-Use this when you need to perform a single dynamic query to your DO from outside, and don't have any further logic around it. Use this when you care about the max query response size if you have a query which response size exceeds over the max RPC size. Theoretically there's no limit to the size of query responses since remote-sql-cursor can stream everything, row by row.
+Use this when you need to perform a single dynamic query to your DO from outside, and don't have any further logic around it.
 
 > [!WARNING]
 > Avoid using this in your worker when doing multiple queries in a single request as this will slow down your app due to the roundtrips. If you need to perform several queries and don't care about the streaming behavior much, it's better to use [RPC](https://developers.cloudflare.com/durable-objects/best-practices/create-durable-object-stubs-and-send-requests/)

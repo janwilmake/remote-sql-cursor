@@ -36,7 +36,11 @@ export class ExampleObject extends DurableObject {
 
 export default {
   fetch: async (request: Request, env: Env) => {
-    const stub = env.ExampleObject.get(env.ExampleObject.idFromName("root"));
-    return stub.fetch(request);
+    try {
+      const stub = env.ExampleObject.get(env.ExampleObject.idFromName("123f"));
+      return stub.fetch(request);
+    } catch (e) {
+      return new Response(e.message);
+    }
   },
 };
