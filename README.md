@@ -8,6 +8,10 @@ Usage:
 npm i remote-sql-cursor
 ```
 
+> [!WARNING]
+>
+> [queryable-object](https://github.com/janwilmake/queryable-object) is a simplified alternative that exchanges streaming for simplicity
+
 # Benefits
 
 Use a nearly identical `exec` cursor API outside of the DO boundary.
@@ -116,13 +120,6 @@ Is this feasible?
 # Answer; yes;
 
 Got a read speed of 8.7mb/second. After trying batching I saw the speed didn't really improve significantly, so this seems pretty reasonable for a durable object.
-
-# Usecases
-
-Use this when you need to perform a single dynamic query to your DO from outside, and don't have any further logic around it.
-
-> [!WARNING]
-> Avoid using this in your worker when doing multiple queries in a single request as this will slow down your app due to the roundtrips. If you need to perform several queries and don't care about the streaming behavior much, it's better to use [RPC](https://developers.cloudflare.com/durable-objects/best-practices/create-durable-object-stubs-and-send-requests/)
 
 # CHANGELOG
 
