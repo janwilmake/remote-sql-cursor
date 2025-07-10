@@ -1,4 +1,4 @@
-# Fix `remote-sql-cursor`
+# Fix `remote-sql-cursor` (2025-07-10)
 
 ```sql
 -- works fine
@@ -21,7 +21,7 @@ generally, all endpoints I'm adding need auth.
 - ✅ we don't want to make things too complex
 - ✅ we don't want users to accidentally expose things publicly
 
-# apply it
+# ❌apply it
 
 - Apply new `@Streamable` in DORM example.
 - Confirm `remote-sql-cursor` 'exec' function works with the `browsableRequest` middleware.
@@ -29,36 +29,12 @@ generally, all endpoints I'm adding need auth.
 
 Worth an update if this gets solved!
 
-# Try actors again
+Instead of this, I ended up going with a simplified RPC approach in https://github.com/janwilmake/queryable-object
 
-Report encountered type errors to @BraydenWilmoth.
-
-# Streaming 1GB Table
+# ❌ Streaming 1GB Table
 
 Post showcasing streaming using `high-throughput-example.ts` - use a simple js script that replaces log to show rows as they stream in
 
 Huge unlock and must still be proven!
 
-# Transferable & Syncable Objects
-
-https://github.com/janwilmake/transferable-object
-
-IDK. just cool to work on. Especially with new unlock above, this can be provably useful. For markdownfeed, I want a syncable object.
-
-https://github.com/janwilmake/syncable-object
-
-# Auth
-
-DOAUTH: https://x.com/janwilmake/status/1921970022810812641 (https://github.com/janwilmake/x-oauth-template is a great start but needs to be updated to latest DORM)
-
-Combi DORM + MCP (https://x.com/iannuttall/status/1920484902752981012)
-
-# Remote Multi-Server Transactions
-
-Making a remote transaction possible would be very useful https://letmeprompt.com/httpsdevelopersc-3mptgo0.
-
-How transactions can be used: https://letmeprompt.com/httpsdevelopersc-vx7x1c0.
-
-We MAY now be able to create a multi-DO transaction in DORM. See https://x.com/janwilmake/status/1926928095329587450 for potential feeback.
-
-Also, the question of sending multiple queries to the DO is not answered, making things slow and potentially not ACID. especially when working with many DBs, allowing point-in-time recovery and transactions would be huge.
+Proved that this is NOT possible. Also good!

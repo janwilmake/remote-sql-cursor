@@ -10,7 +10,7 @@ npm i remote-sql-cursor
 
 > [!WARNING]
 >
-> [queryable-object](https://github.com/janwilmake/queryable-object) is a simplified alternative that exchanges streaming for simplicity
+> [queryable-object](https://github.com/janwilmake/queryable-object) is a simplified alternative that exchanges streaming for simplicity. It is not made available over HTTP but RPC so not for everything, but quite useful in many ways!
 
 # Benefits
 
@@ -130,3 +130,15 @@ Got a read speed of 8.7mb/second. After trying batching I saw the speed didn't r
 - **June 17, 2025**: 0.1.3 - Added optional validator, added mixin decorator `@Streamable` (and refactored DO), renamed endpoint to `/query/stream` to not conflict with `@Browsable`
 - **July 8, 2025**: 0.1.8 (BREAKING) - removed migrations functionality in favor of https://github.com/janwilmake/migratable-object (post: https://x.com/janwilmake/status/1942519892776722572)
 - **July 10, 2025**: 0.2.1 - 1) migrated to `ReadableStream` from `TransformerStream` to avoid strange crashes, and 2) added mandatory auth for remote requests. Tested streaming large results, and added limitations section to the readme
+
+# TODO
+
+## Remote Multi-Server Transactions
+
+Making a remote transaction possible would be very useful https://letmeprompt.com/httpsdevelopersc-3mptgo0.
+
+How transactions can be used: https://letmeprompt.com/httpsdevelopersc-vx7x1c0.
+
+We MAY now be able to create a multi-DO transaction in DORM. See https://x.com/janwilmake/status/1926928095329587450 for potential feeback.
+
+Also, the question of sending multiple queries to the DO is not answered, making things slow and potentially not ACID. especially when working with many DBs, allowing point-in-time recovery and transactions would be huge.
