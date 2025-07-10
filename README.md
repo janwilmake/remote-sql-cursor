@@ -18,10 +18,11 @@ Please [leave a comment and share](https://x.com/janwilmake/status/1921158321983
 
 # Benefits
 
-- Use a nearly identical `exec` cursor API outside of the DO boundary
+Use a nearly identical `exec` cursor API outside of the DO boundary.
 
 # Limitations
 
+- Locally my server is silently restarting when remote-sql-cursor is running queries, and it's not clear why: `Reloading local server...` is all information that's available. In production it works fine though!
 - My hypothesis was that TTFB for remote queries is lower for large queries (Demo: [streaming in 120k rows of a few columns of a table totaling 470MB](120krows.mov)). That said, as you can see at https://remote-sql-cursor.wilmake.com/direct, the streaming row-by-row setup also significantly reduces actual speed. Direct is much faster because it doesn't have the overhead of streaming each row separately.
 - Although the data in the SQL table can be up to 10GB, the max result from the SQL query can not exceed the memory. If you try you will retrieve `{"error":"Durable Object's isolate exceeded its memory limit and was reset."}`. It seems that, although SQLite can be configured such that it uses less memory and streams results, this is normally not the case, and Cloudflare does not support it.
 
