@@ -136,41 +136,83 @@ export class StreamableHandler {
               encoder.encode(JSON.stringify(metadataPart) + "\n"),
             );
 
-            // Stream each row as it comes
-            //@ts-ignore
-            for (const row of cursor) {
-              controller.enqueue(
-                encoder.encode(JSON.stringify({ row }) + "\n"),
-              );
+            // Stream each row as it comes - use try/catch to handle any cursor errors
+            try {
+              for (const row of cursor) {
+                // Check if controller is still open before enqueuing
+                try {
+                  controller.enqueue(
+                    encoder.encode(JSON.stringify({ row }) + "\n"),
+                  );
+                } catch (enqueueError) {
+                  // Client disconnected or controller closed
+                  console.log("Client disconnected during streaming");
+                  break;
+                }
+              }
+
+              // Send final metadata with stats - only if controller is still open
+              try {
+                controller.enqueue(
+                  encoder.encode(
+                    JSON.stringify({
+                      metadata: {
+                        rowsRead: cursor.rowsRead,
+                        rowsWritten: cursor.rowsWritten,
+                      },
+                    }) + "\n",
+                  ),
+                );
+              } catch (enqueueError) {
+                // Client disconnected, but that's ok
+                console.log("Client disconnected before final metadata");
+              }
+            } catch (cursorError) {
+              console.error("Cursor iteration error:", cursorError);
+              try {
+                controller.enqueue(
+                  encoder.encode(
+                    JSON.stringify({ error: cursorError.message }) + "\n",
+                  ),
+                );
+              } catch (enqueueError) {
+                // Client disconnected
+              }
             }
 
-            // Send final metadata with stats
-            controller.enqueue(
-              encoder.encode(
-                JSON.stringify({
-                  metadata: {
-                    rowsRead: cursor.rowsRead,
-                    rowsWritten: cursor.rowsWritten,
-                  },
-                }) + "\n",
-              ),
-            );
-
-            // Close the stream
-            controller.close();
+            // Close the stream safely
+            try {
+              controller.close();
+            } catch (closeError) {
+              // Stream already closed, that's fine
+            }
           } catch (error) {
             console.error("SQL execution error:", error);
             console.error("Query:", query);
             console.error("Bindings:", bindings);
 
-            // Send error information
-            controller.enqueue(
-              encoder.encode(JSON.stringify({ error: error.message }) + "\n"),
-            );
+            // Send error information - only if controller is still open
+            try {
+              controller.enqueue(
+                encoder.encode(JSON.stringify({ error: error.message }) + "\n"),
+              );
+            } catch (enqueueError) {
+              // Client disconnected
+            }
 
             // Close the stream with error
-            controller.close();
+            try {
+              controller.close();
+            } catch (closeError) {
+              // Stream already closed
+            }
           }
+        },
+
+        // Add cancel handler to clean up when client disconnects
+        cancel: (reason) => {
+          console.log("Stream cancelled:", reason);
+          // Any cleanup logic here
         },
       });
 

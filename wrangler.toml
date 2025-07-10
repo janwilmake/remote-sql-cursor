@@ -1,6 +1,6 @@
 name = "remote-sql-cursor3"
 # switch between proxy.ts, minimal-example.ts and high-throughput-example.ts to test the other demos
-main = "high-throughput-example.ts"
+main = "minimal-example.ts"
 compatibility_date = "2025-07-08"
 dev.port = 3000
 assets.directory = "./"

@@ -28,7 +28,7 @@ export default {
       `INSERT INTO items (name, created_at) VALUES (?, ?)`,
       `Item ${Date.now()}`,
       Date.now(),
-    ).toArray();
+    );
 
     type Item = {
       id: number;
@@ -36,13 +36,10 @@ export default {
       created_at: number;
     };
 
-    // Stream and count all items
-    //@ts-ignore
-    const stub = env.ExampleObject.get(env.ExampleObject.idFromName(name));
     let count = 0;
 
     for await (const row of exec<Item>(stub, `SELECT * FROM items`)) {
-      console.log({ row });
+      // console.log({ row });
       count++;
     }
 
