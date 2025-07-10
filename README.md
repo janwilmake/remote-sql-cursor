@@ -19,7 +19,7 @@ Please [leave a comment and share](https://x.com/janwilmake/status/1921158321983
 # Benefits
 
 - Use a nearly identical `exec` cursor API outside of the DO boundary
-- TTFB for remote queries is much lower for large queries
+- TTFB for remote queries is much lower for large queries (Demo: [streaming in 120k rows of a few columns of a table of 250MB](120krows.mov]))
 
 # Limitations
 
